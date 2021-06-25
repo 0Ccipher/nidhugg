@@ -3123,6 +3123,9 @@ void Interpreter::callFunction(Function *F,
       return;
     }
     if(AtomicFunctionCall < 0){
+    	if(transactions > 0)
+    		TB.endTransaction(transactions);
+    	TB.beginTransaction(++transactions);
       AtomicFunctionCall = ECStack()->size();
     } // else we are already inside an atomic function call
   }
@@ -3415,9 +3418,11 @@ void Interpreter::run() {
       while(AtomicFunctionCall < int(ECStack()->size())){
         ExecutionContext &SF = ECStack()->back();  // Current stack frame
         Instruction &I = *SF.CurInst++;         // Increment before execute
+				TB.createNextEvent();
         visit(I);
       }
       AtomicFunctionCall = -1;
+      
     }
 
     if(ECStack()->empty()){ // The thread has terminated
