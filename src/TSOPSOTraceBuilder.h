@@ -261,6 +261,10 @@ public:
    * Returns true on success, false if an error has been generated.
    */
   virtual NODISCARD bool register_alternatives(int alt_count) = 0;
+  
+  virtual void beginTransaction(int tid) = 0;
+  virtual void endTransaction(int tid) = 0;
+  virtual void createNextEvent() = 0;
 };
 
 #endif

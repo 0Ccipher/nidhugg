@@ -29,6 +29,7 @@
 #include "SaturatedGraph.h"
 #include "RFSCUnfoldingTree.h"
 #include "RFSCDecisionTree.h"
+#include "PrefixHeuristic.h"
 
 #include <unordered_map>
 #include <unordered_set>
@@ -53,7 +54,11 @@ public:
   virtual Trace *get_trace() const override;
   virtual bool reset() override;
   virtual IID<CPid> get_iid() const override;
-
+	
+	virtual void beginTransaction(int tid) override;	
+	  virtual void endTransaction(int tid) override { return; };
+	    virtual void createNextEvent() override {return;};
+	  
   virtual void debug_print() const override;
   virtual bool cond_branch(bool cnd) override { return true; }
 

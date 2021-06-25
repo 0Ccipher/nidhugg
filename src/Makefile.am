@@ -17,17 +17,13 @@ libnidhugg_a_SOURCES = \
   FBVClock.cpp FBVClock.h \
   GlobalContext.cpp GlobalContext.h \
   IID.h IID.tcc \
+  TIID.h TIID.tcc\
+  tid.h tid.tcc\
   Interpreter.cpp Interpreter.h \
   LoopUnrollPass.cpp LoopUnrollPass.h \
   MRef.cpp MRef.h \
   nregex.cpp nregex.h \
   Option.h \
-  POWERExecution.cpp \
-  POWERInterpreter.cpp POWERInterpreter.h \
-  POWERARMTraceBuilder.cpp POWERARMTraceBuilder.tcc POWERARMTraceBuilder.h POWERARMTraceBuilder_decl.h \
-  PrefixHeuristic.h PrefixHeuristic.cpp \
-  PSOInterpreter.cpp PSOInterpreter.h \
-  PSOTraceBuilder.cpp PSOTraceBuilder.h \
   SaturatedGraph.h SaturatedGraph.cpp \
   SatSolver.h \
   Seqno.h \
@@ -43,12 +39,15 @@ libnidhugg_a_SOURCES = \
   TraceBuilder.cpp TraceBuilder.h \
   Transform.cpp Transform.h \
   TSOInterpreter.cpp TSOInterpreter.h \
+  CCVInterpreter.cpp CCVInterpreter.h \
   TSOPSOTraceBuilder.h \
   TSOTraceBuilder.cpp TSOTraceBuilder.h \
   RFSCUnfoldingTree.cpp RFSCUnfoldingTree.h \
   RFSCDecisionTree.cpp RFSCDecisionTree.h \
   RFSCTraceBuilder.cpp RFSCTraceBuilder.h \
+  CCVTraceBuilder.cpp CCVTraceBuilder.h \
   VClock.cpp VClock.h VClock.tcc \
+  PrefixHeuristic.cpp PrefixHeuristic.h\
   vecset.h vecset.tcc
 libnidhugg_a_CXXFLAGS = -fno-rtti
 

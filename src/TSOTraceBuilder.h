@@ -21,6 +21,7 @@
 #ifndef __TSO_TRACE_BUILDER_H__
 #define __TSO_TRACE_BUILDER_H__
 
+#include <string>
 #include "TSOPSOTraceBuilder.h"
 #include "VClock.h"
 #include "SymEv.h"
@@ -47,7 +48,10 @@ public:
   virtual IID<CPid> get_iid() const override;
 
   virtual void debug_print() const override;
-
+	virtual void beginTransaction(int tid) override;	
+		  virtual void endTransaction(int tid) override { return; };
+		    virtual void createNextEvent() override {return; };
+	
   virtual NODISCARD bool spawn() override;
   virtual NODISCARD bool store(const SymData &ml) override;
   virtual NODISCARD bool atomic_store(const SymData &ml) override;

@@ -1711,3 +1711,8 @@ long double RFSCTraceBuilder::estimate_trace_count(int idx) const{
 
   return count;
 }
+
+
+void RFSCTraceBuilder::beginTransaction(int tid) {
+	
+return;}

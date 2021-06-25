@@ -2524,3 +2524,7 @@ long double TSOTraceBuilder::estimate_trace_count(int idx) const{
 
   return count;
 }
+
+void TSOTraceBuilder::beginTransaction(int tid) {
+	
+return;}
