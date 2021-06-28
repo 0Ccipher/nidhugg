@@ -22,7 +22,7 @@
 #include "PrefixHeuristic.h"
 #include "Timing.h"
 #include "TraceUtil.h"
-
+#include "Interpreter.h"
 #include <sstream>
 #include <stdexcept>
 
@@ -46,6 +46,7 @@ CCVTraceBuilder::CCVTraceBuilder(const Configuration &conf)
     : TSOPSOTraceBuilder(conf) {
     threads.push_back(Thread(CPid(), -1));
     prefix_idx = -1;
+    transaction_idx  = -1;
     replay = false;
     cancelled = false;
     last_full_memory_conflict = -1;
@@ -206,7 +207,14 @@ Trace *CCVTraceBuilder::get_trace() const{
 
 bool CCVTraceBuilder::reset(){
 
-  //prefix = std::move(new_prefix);
+	for(unsigned i=0 ; i < transactions.size() ; ++i){
+			transactions[i].global_variables.clear();
+				
+	}
+  transactions.clear();
+  transaction_idx = -1;
+  
+  prefix.clear();
   CPS = CPidSystem();
   threads.clear();
   threads.push_back(Thread(CPid(),-1));
@@ -216,7 +224,7 @@ bool CCVTraceBuilder::reset(){
   mutex_deadlocks.clear();
   last_full_memory_conflict = -1;
   prefix_idx = -1;
-  replay = true;
+  replay = false;
   cancelled = false;
   last_md = 0;
   tasks_created = 0;
@@ -284,8 +292,8 @@ bool CCVTraceBuilder::store(const SymData &sd){
 
 bool CCVTraceBuilder::atomic_store(const SymData &sd){
   if (!record_symbolic(SymEv::Store(sd))) return false;
-  if(!transactions.empty() && transactions.back().second == curev().iid.get_pid()) 
-  	curev().tid = transactions.back().first;
+  if(!transactions.empty() && curev().iid.get_pid() == transactions.back().pid) 
+  	curev().tid = transactions.back().pid;
   do_atomic_store(sd);
   return true;
 }
@@ -312,8 +320,8 @@ bool CCVTraceBuilder::atomic_rmw(const SymData &sd){
 
 bool CCVTraceBuilder::load(const SymAddrSize &ml){
   if (!record_symbolic(SymEv::Load(ml))) return false;
-  if(!transactions.empty() && curev().iid.get_pid() == transactions.back().second) 
-  	curev().tid = transactions.back().first;
+  if(!transactions.empty() && curev().iid.get_pid() == transactions.back().pid) 
+  	curev().tid = transactions.back().pid;
   do_load(ml);
   return true;
 }
@@ -942,30 +950,75 @@ bool CCVTraceBuilder::is_begin(unsigned i) const {
   const SymEv &e = prefix[i].sym;
   return e.kind == SymEv::BEGIN;
 }
+
 bool CCVTraceBuilder::is_end(unsigned i) const {
   const SymEv &e = prefix[i].sym;
   return e.kind == SymEv::END;
 }
+
 void CCVTraceBuilder::beginTransaction(int tid) {
   assert(tid > 0);
-	IPid parent_ipid = curev().iid.get_pid();
+	IPid pid = curev().iid.get_pid();
   bool r = record_symbolic(SymEv::Begin(tid));
-  std::pair<int,IPid> t (tid,parent_ipid);
-  transactions.push_back(t);
+	++transaction_idx;
+  assert(transaction_idx == int(transactions.size()));
+  threads[pid].transaction_indices.push_back(transaction_idx);
+  Transaction t(pid,tid,threads[pid].last_transaction_index());
+  transactions.emplace_back(t);
+  if(!transactions.empty() && curev().iid.get_pid() == transactions.back().pid) 
+  	curev().tid = transactions.back().tid;
 }
+
 void CCVTraceBuilder::endTransaction(int tid) {
   assert(tid > 0);
-	IPid parent_ipid = curev().iid.get_pid();
-  bool r = record_symbolic(SymEv::End(tid));
+  if(!transactions.empty() && curev().iid.get_pid() == transactions.back().pid){
+  	curev().tid = transactions.back().tid;
+    bool r = record_symbolic(SymEv::End(transactions.back().tid));
+ }
+}
+
+int CCVTraceBuilder:: performWrite(void *ptr, llvm::GenericValue val){
+	IPid pid = curev().iid.get_pid();
+	Transaction &t = transactions.back();
+	if(!transactions.empty() && curev().iid.get_pid() == t.pid){
+		if(t.global_variables.count(ptr)){
+			t.global_variables[ptr] = val;
+		}
+		else{
+			t.global_variables.insert({ptr,val});
+		}
+		return transaction_idx;
+	}
+	else
+		return 0;
+}
+
+int CCVTraceBuilder::performRead(void *ptr ,llvm::Type *typ){
+	int tid = curev().tid;
+	Transaction &t = transactions.back();
+	if(!transactions.empty() && curev().iid.get_pid() == t.pid){
+		if(t.global_variables.count(ptr)){
+			return transaction_idx;
+		}
+	}
+	else{
+		return 0;
+	}
 }
 
 uint64_t CCVTraceBuilder::tracecount(){
 	uint64_t t = 0;
-	for(unsigned i=0 ; i < prefix.size() ; ++i){
-		if(prefix[i].tid > 0 && is_load(i))
+	int64_t value = 0;
+	/*for(unsigned i=0 ; i < prefix.size() ; ++i){
+		if(is_store(i) && prefix[i].tid > 0)
 			t++;
+	}*/
+	for(unsigned i=0 ; i < transactions.size() ; ++i){
+			for(auto j = transactions[i].global_variables.begin() ; j != transactions[i].global_variables.end() ; j++)
+				//value = j->second.IntVal.getSExtValue();
+				//t = t + value;
+				t++;
 	}
-	
+	//t = temp;
 	return t;
 }
-

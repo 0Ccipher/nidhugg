@@ -1183,9 +1183,23 @@ void Interpreter::visitLoadInst(LoadInst &I) {
     SetValue(&I, Result, SF);
     return;
   }
-
-  LoadValueFromMemory(Result, Ptr, I.getType());
-  SetValue(&I, Result, SF);
+	if(0 <= AtomicFunctionCall && !transactions_vec.empty()){
+  auto tid = TB.performRead(Ptr,I.getType());
+  //LoadValueFromMemory(Result, Ptr, I.getType());
+  //int tid = 1;
+  if(tid >= 0){
+	if(!transactions_vec.empty()){
+	  Transaction &t = transactions_vec[tid];
+		if(t.global_variables.count(Ptr)){
+			//LoadValueFromMemory(Result, (GenericValue*)GVTOP(t.global_variables[Ptr]), I.getType());
+			SetValue(&I,t.global_variables[Ptr], SF);
+		}
+	}}
+	}
+	else{
+			LoadValueFromMemory(Result, Ptr, I.getType());
+  		SetValue(&I, Result, SF);
+  }
 }
 
 void Interpreter::visitStoreInst(StoreInst &I) {
@@ -1208,7 +1222,23 @@ void Interpreter::visitStoreInst(StoreInst &I) {
     return;
   }
 
-  StoreValueToMemory(Val, Ptr, I.getOperand(0)->getType());
+	if(0 <= AtomicFunctionCall && !transactions_vec.empty()){
+  int tid = TB.performWrite(Ptr, Val);
+  //int tid = 1;
+  if(tid){
+	if(!transactions_vec.empty()){
+		Transaction &t = transactions_vec.back();
+		if(t.global_variables.count(Ptr)){
+			t.global_variables[Ptr] = Val;
+		}
+		else{
+			t.global_variables.insert({Ptr,Val});
+		}
+	}}
+	}
+	else{
+	  StoreValueToMemory(Val, Ptr, I.getOperand(0)->getType());
+	}
 }
 
 void Interpreter::visitAtomicCmpXchgInst(AtomicCmpXchgInst &I){
@@ -3123,9 +3153,11 @@ void Interpreter::callFunction(Function *F,
       return;
     }
     if(AtomicFunctionCall < 0){
-    	if(transactions > 0)
-    		TB.endTransaction(transactions);
     	TB.beginTransaction(++transactions);
+    	++transaction_idx;
+  		assert(transaction_idx == int(transactions_vec.size()));
+  		Transaction t(CurrentThread,transactions);
+      transactions_vec.emplace_back(t);
       AtomicFunctionCall = ECStack()->size();
     } // else we are already inside an atomic function call
   }
@@ -3418,11 +3450,11 @@ void Interpreter::run() {
       while(AtomicFunctionCall < int(ECStack()->size())){
         ExecutionContext &SF = ECStack()->back();  // Current stack frame
         Instruction &I = *SF.CurInst++;         // Increment before execute
-				TB.createNextEvent();
+				TB.createNextEvent();  // get next even TODO
         visit(I);
       }
       AtomicFunctionCall = -1;
-      
+    	TB.endTransaction(transactions); // end of the transaction TODO
     }
 
     if(ECStack()->empty()){ // The thread has terminated
@@ -3440,5 +3472,11 @@ void Interpreter::run() {
     }
   }
   CurrentThread = 0;
+  for(unsigned i=0 ; i < transactions_vec.size() ; ++i){
+			transactions_vec[i].global_variables.clear();
+	}
+  transactions_vec.clear();
+  transactions = 0;
+  transaction_idx = -1;
   clearAllStacks();
 }

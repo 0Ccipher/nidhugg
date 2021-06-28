@@ -31,7 +31,14 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <boost/container/flat_map.hpp>
-
+#include <llvm/ExecutionEngine/GenericValue.h>
+#include <llvm/IR/Type.h>
+#if defined(HAVE_LLVM_IR_DATALAYOUT_H)
+#include <llvm/IR/DataLayout.h>
+#elif defined(HAVE_LLVM_DATALAYOUT_H)
+#include <llvm/DataLayout.h>
+#endif
+#include <llvm/ExecutionEngine/ExecutionEngine.h>
 
 class CCVTraceBuilder final : public TSOPSOTraceBuilder{
 public:
@@ -51,8 +58,10 @@ public:
   virtual IID<CPid> get_iid() const override;
 	
 		virtual void beginTransaction(int tid) override;	
-			  virtual void endTransaction(int tid) override;
-			    virtual void createNextEvent() override;
+			 virtual void endTransaction(int tid) override;
+			 virtual void createNextEvent() override;
+			 virtual int performWrite(void *ptr, llvm::GenericValue val) override;
+   virtual int performRead(void *ptr,llvm::Type *typ) override;
 			  
   virtual void debug_print() const override;
   virtual bool cond_branch(bool cnd) override { return true; }
@@ -136,11 +145,14 @@ protected:
     /* Indices in prefix of the events of this process.
      */
     std::vector<unsigned> event_indices;
+    
+    std::vector<unsigned> transaction_indices;/// TODO
 
     /* The iid-index of the last event of this thread, or 0 if it has not
      * executed any events yet.
      */
     int last_event_index() const { return event_indices.size(); }
+    int last_transaction_index() const { return transaction_indices.size(); }
   };
 
 
@@ -220,7 +232,32 @@ protected:
 
   /* All currently deadlocked threads */
   boost::container::flat_map<SymAddr, std::vector<IPid>> mutex_deadlocks;
+  
+  
+  class Transaction{
+  public: 
+  	Transaction(IPid pid, int tid, unsigned tindex):pid(pid), tid(tid){};
+  	
+  	IPid pid;
+  	int tid;
+  	unsigned tindex;
+    VClock<IPid> clock, above_clock;
 
+    std::vector<unsigned> happens_after;
+    
+    std::vector<int> read_from;
+    
+    std::vector<int> modification_order;
+    
+    std::unordered_map<const void *, llvm::GenericValue> global_variables;
+  
+  
+  };
+  
+  //TODO
+  std::vector<Transaction> transactions;
+  int transaction_idx;
+	int temp = 0;
   /* Information about a (short) sequence of consecutive events by the
    * same thread. At most one event in the sequence may have conflicts
    * with other events, and if the sequence has a conflicting event,
@@ -268,6 +305,17 @@ protected:
     bool may_conflict;
 
     Option<int> read_from;
+    
+    //TODO
+    int tid;
+    
+    std::vector<int> cad_read_from;
+    
+    std::vector<std::vector<Event>> schedules;
+    
+    bool localread = false;
+    
+    bool Swappable = true;
     /* Symbolic representation of the globally visible operation of this event.
      * Empty iff !may_conflict
      */
@@ -279,10 +327,6 @@ protected:
      * explored traces.
      */
     int sleep_branch_trace_count;
-    
-    int tid;
-
-
   private:
     /* The hierarchical order of events. */
     //int decision_depth;
@@ -296,8 +340,7 @@ protected:
   std::vector<Event> prefix;
   VClockVec below_clocks;
   
-  //TODO
-  std::vector<std::pair<int,IPid>> transactions;
+  
 
   /* The index into prefix corresponding to the last event that was
    * scheduled. Has the value -1 when no events have been scheduled.

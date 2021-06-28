@@ -21,6 +21,8 @@
 #ifndef __TSO_TRACE_BUILDER_H__
 #define __TSO_TRACE_BUILDER_H__
 
+#include <llvm/IR/Type.h>
+
 #include <string>
 #include "TSOPSOTraceBuilder.h"
 #include "VClock.h"
@@ -50,7 +52,9 @@ public:
   virtual void debug_print() const override;
 	virtual void beginTransaction(int tid) override;	
 		  virtual void endTransaction(int tid) override { return; };
-		    virtual void createNextEvent() override {return; };
+		  virtual void createNextEvent() override {return; };
+		  virtual int performWrite(void *ptr, llvm::GenericValue val) override { return 0;};
+   virtual int performRead(void *ptr,llvm::Type *typ) override {return 0;};
 	
   virtual NODISCARD bool spawn() override;
   virtual NODISCARD bool store(const SymData &ml) override;

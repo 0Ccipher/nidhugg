@@ -33,6 +33,7 @@
  */
 
 #include <config.h>
+#include <unordered_map>
 
 #ifndef __INTERPRETER_H__
 #define __INTERPRETER_H__
@@ -193,8 +194,21 @@ protected:
    * currently executing, atomic function.
    */
   int AtomicFunctionCall;
-	
+
 	int transactions;
+	class Transaction{
+  public: 
+  	Transaction(int pid, int tid):pid(pid),tid(tid){};
+  	int tid;
+  	int pid;
+    std::unordered_map<const void *, llvm::GenericValue> global_variables;
+  };
+  
+  //TODO
+  std::vector<Transaction> transactions_vec;
+  int transaction_idx;
+  
+  
   /* A PthreadMutex object keeps information about a pthread mutex
    * object.
    */

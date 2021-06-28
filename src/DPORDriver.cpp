@@ -404,7 +404,7 @@ DPORDriver::Result DPORDriver::run_ccv() {
 
   uint64_t computation_count = 0;
   long double estimate = 1;
-  int tasks_left = 1;
+  int tasks_left = 2;
 
   do{
     if(conf.print_progress){
@@ -416,6 +416,7 @@ DPORDriver::Result DPORDriver::run_ccv() {
     Trace *t= this->run_once(TB, mod.get(), assume_blocked);
     //TB.compute_prefixes();
     tasks_left--;
+    TB.reset();
 
     /*int to_create = TB.tasks_created;
 
@@ -434,13 +435,9 @@ DPORDriver::Result DPORDriver::run_ccv() {
       mod = parse();
     }
     
-   res.trace_count = TB.tracecount(); //TB.exploreTraces();
+   res.trace_count = TB.tracecount();
 
   } while(tasks_left);
-
-  if(conf.print_progress){
-    llvm::dbgs() << ESC_char << "[K\n";
-  }
 
   return res;
 }
