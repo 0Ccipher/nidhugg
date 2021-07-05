@@ -233,25 +233,27 @@ protected:
   /* All currently deadlocked threads */
   boost::container::flat_map<SymAddr, std::vector<IPid>> mutex_deadlocks;
   
+  typedef unsigned Tid;
   
   class Transaction{
   public: 
-  	Transaction(IPid pid, int tid, unsigned tindex):pid(pid), tid(tid){};
+  	Transaction(IPid pid, int tid, Tid tindex):pid(pid), tid(tid){};
   	
   	IPid pid;
   	int tid;
-  	unsigned tindex;
+  	Tid tindex;
     VClock<IPid> clock, above_clock;
 
-    std::vector<unsigned> happens_after;
+    std::vector<Tid> happens_after; // list of transactions
     
-    std::vector<int> read_from;
+    std::vector<Tid> read_from; 
     
-    std::vector<int> modification_order;
+    std::vector<Tid> modification_order;
     
     std::unordered_map<const void *, llvm::GenericValue> global_variables;
   
-  
+    //supporting functions?
+ 
   };
   
   //TODO
@@ -307,7 +309,7 @@ protected:
     Option<int> read_from;
     
     //TODO
-    int tid;
+    Tid tid;
     
     std::vector<int> cad_read_from;
     
