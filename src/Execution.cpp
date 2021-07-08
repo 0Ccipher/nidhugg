@@ -1200,6 +1200,8 @@ void Interpreter::visitLoadInst(LoadInst &I) {
 			LoadValueFromMemory(Result, Ptr, I.getType());
   		SetValue(&I, Result, SF);
   }
+  
+  TB.metadata(I.getMetadata("dbg"));
 }
 
 void Interpreter::visitStoreInst(StoreInst &I) {
@@ -1239,6 +1241,8 @@ void Interpreter::visitStoreInst(StoreInst &I) {
 	else{
 	  StoreValueToMemory(Val, Ptr, I.getOperand(0)->getType());
 	}
+
+  TB.metadata(I.getMetadata("dbg"));
 }
 
 void Interpreter::visitAtomicCmpXchgInst(AtomicCmpXchgInst &I){
@@ -3450,7 +3454,9 @@ void Interpreter::run() {
       while(AtomicFunctionCall < int(ECStack()->size())){
         ExecutionContext &SF = ECStack()->back();  // Current stack frame
         Instruction &I = *SF.CurInst++;         // Increment before execute
+
 				TB.createNextEvent();  // get next even TODO
+        //TB.metadata(I.getMetadata("dbg"));
         visit(I);
       }
       AtomicFunctionCall = -1;

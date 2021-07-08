@@ -696,7 +696,8 @@ int CCVTraceBuilder::compute_above_clock(unsigned i) {
   IPid ipid = transactions[i].get_pid();
   int tidx = transactions[i].get_index();
   if (tidx > 1) {
-    last = find_process_transaction(ipid, tidx-1);
+    last = find_process_event(ipid, tidx-1);
+    //last = find_process_transaction(ipid, tidx-1);
     transactions[i].clock = transactions[last].clock;
   } else {
     transactions[i].clock = VClock<IPid>();
