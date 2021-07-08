@@ -17,13 +17,9 @@ void __VERIFIER_atomic_t2(){
   x = 90;
 	if( x <= 0){
 			y = 2;
-			//printf("y2 = %d: ",y);  
 	}
 	else{
-			//assert(x <= 0);
-			//y = 7;
-			//y = 1;
-			printf("x2 = %d: ",x);
+		printf("x2 = %d: ",x);
 	}
 
 }
