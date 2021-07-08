@@ -1,4 +1,4 @@
-/* Copyright (C) 2018 Magnus Lång and Tuan Phong Ngo
+/* Copyright (C) 2021 Omkar Tuppe 
  *
  * This file is part of Nidhugg.
  *
@@ -351,7 +351,7 @@ bool CCVTraceBuilder::compare_exchange
 }
 
 bool CCVTraceBuilder::full_memory_conflict(){
-  invalid_input_error("RFSC does not support black-box functions with memory effects");
+  invalid_input_error("CCV does not support black-box functions with memory effects");
   return false;
   if (!record_symbolic(SymEv::Fullmem())) return false;
   curev().may_conflict = true;
@@ -456,7 +456,7 @@ bool CCVTraceBuilder::mutex_destroy(const SymAddrSize &ml){
 }
 
 bool CCVTraceBuilder::cond_init(const SymAddrSize &ml){
-  invalid_input_error("RFSC does not support condition variables");
+  invalid_input_error("CCV does not support condition variables");
   return false;
   if (!record_symbolic(SymEv::CInit(ml))) return false;
   if(cond_vars.count(ml.addr)){
@@ -469,7 +469,7 @@ bool CCVTraceBuilder::cond_init(const SymAddrSize &ml){
 }
 
 bool CCVTraceBuilder::cond_signal(const SymAddrSize &ml){
-  invalid_input_error("RFSC does not support condition variables");
+  invalid_input_error("CCV does not support condition variables");
   return false;
   if (!record_symbolic(SymEv::CSignal(ml))) return false;
   curev().may_conflict = true;
@@ -507,7 +507,7 @@ bool CCVTraceBuilder::cond_signal(const SymAddrSize &ml){
 }
 
 bool CCVTraceBuilder::cond_broadcast(const SymAddrSize &ml){
-  invalid_input_error("RFSC does not support condition variables");
+  invalid_input_error("CCV does not support condition variables");
   return false;
   if (!record_symbolic(SymEv::CBrdcst(ml))) return false;
   curev().may_conflict = true;
@@ -532,7 +532,7 @@ bool CCVTraceBuilder::cond_broadcast(const SymAddrSize &ml){
 }
 
 bool CCVTraceBuilder::cond_wait(const SymAddrSize &cond_ml, const SymAddrSize &mutex_ml){
-  invalid_input_error("RFSC does not support condition variables");
+  invalid_input_error("CCV does not support condition variables");
   return false;
   {
     auto it = mutexes.find(mutex_ml.addr);
@@ -569,7 +569,7 @@ bool CCVTraceBuilder::cond_wait(const SymAddrSize &cond_ml, const SymAddrSize &m
 }
 
 bool CCVTraceBuilder::cond_awake(const SymAddrSize &cond_ml, const SymAddrSize &mutex_ml){
-  invalid_input_error("RFSC does not support condition variables");
+  invalid_input_error("CCV does not support condition variables");
   return false;
   assert(cond_vars.count(cond_ml.addr));
   CondVar &cond_var = cond_vars[cond_ml.addr];
@@ -583,7 +583,7 @@ bool CCVTraceBuilder::cond_awake(const SymAddrSize &cond_ml, const SymAddrSize &
 }
 
 int CCVTraceBuilder::cond_destroy(const SymAddrSize &ml){
-  invalid_input_error("RFSC does not support condition variables");
+  invalid_input_error("CCV does not support condition variables");
   return false;
   const int err = (EBUSY == 1) ? 2 : 1; // Chose an error value different from EBUSY
   if (!record_symbolic(SymEv::CDelete(ml))) return err;
@@ -603,7 +603,7 @@ int CCVTraceBuilder::cond_destroy(const SymAddrSize &ml){
 }
 
 bool CCVTraceBuilder::register_alternatives(int alt_count){
-  invalid_input_error("RFSC does not support nondeterministic events");
+  invalid_input_error("CCV does not support nondeterministic events");
   return false;
   curev().may_conflict = true;
   if (!record_symbolic(SymEv::Nondet(alt_count))) return false;
@@ -693,26 +693,26 @@ static It frontier_filter(It first, It last, LessFn less){
 
 int CCVTraceBuilder::compute_above_clock(unsigned i) {
   int last = -1;
-  IPid ipid = prefix[i].iid.get_pid();
-  int iidx = prefix[i].iid.get_index();
-  if (iidx > 1) {
-    last = find_process_event(ipid, iidx-1);
-    prefix[i].clock = prefix[last].clock;
+  IPid ipid = transactions[i].get_pid();
+  int tidx = transactions[i].get_index();
+  if (tidx > 1) {
+    last = find_process_transaction(ipid, tidx-1);
+    transactions[i].clock = transactions[last].clock;
   } else {
-    prefix[i].clock = VClock<IPid>();
+    transactions[i].clock = VClock<IPid>();
     const Thread &t = threads[ipid];
     if (t.spawn_event >= 0)
       add_happens_after(i, t.spawn_event);
   }
-  prefix[i].clock[ipid] = iidx;
+  transactions[i].clock[ipid] = tidx;
 
   /* First add the non-reversible edges */
-  for (unsigned j : prefix[i].happens_after){
+  for (unsigned j : transactions[i].happens_after){
     assert(j < i);
-    prefix[i].clock += prefix[j].clock;
+    transactions[i].clock += transactions[j].clock;
   }
 
-  prefix[i].above_clock = prefix[i].clock;
+  transactions[i].above_clock = transactions[i].clock;
   return last;
 }
 
@@ -721,16 +721,18 @@ void CCVTraceBuilder::compute_vclocks(){
   /* The first event of a thread happens after the spawn event that
    * created it.
    */
-  std::vector<llvm::SmallVector<unsigned,2>> happens_after(prefix.size());
-  for (unsigned i = 0; i < prefix.size(); i++){
+  std::vector<llvm::SmallVector<unsigned,2>> happens_after(transactions.size());
+  for (unsigned i = 0; i < transactions.size(); i++){
     /* First add the non-reversible edges */
     int last = compute_above_clock(i);
 
     if (last != -1) happens_after[last].push_back(i);
-    for (unsigned j : prefix[i].happens_after){
+    for (unsigned j : transactions[i].happens_after){
       happens_after[j].push_back(i);
     }
 
+
+    //TODO
     /* Then add read-from */
     if (prefix[i].read_from && *prefix[i].read_from != -1) {
       prefix[i].clock += prefix[*prefix[i].read_from].clock;
@@ -974,6 +976,7 @@ void CCVTraceBuilder::endTransaction(int tid) {
   if(!transactions.empty() && curev().iid.get_pid() == transactions.back().pid){
   	curev().tid = transactions.back().tid;
     bool r = record_symbolic(SymEv::End(transactions.back().tid));
+    //temp += transactions.back().tid;
  }
 }
 

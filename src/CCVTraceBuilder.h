@@ -1,5 +1,4 @@
-/* Copyright (C) 2018 Magnus Lång and Tuan Phong Ngo
- *
+/* Copyright (C) 2021 Omkar Tuppe
  * This file is part of Nidhugg.
  *
  * Nidhugg is free software: you can redistribute it and/or modify it
@@ -105,6 +104,8 @@ protected:
    * auxiliary threads corresponding to the real thread at index i-1.
    */
   typedef int IPid;
+
+  typedef int Tid;
 
   /* An Access is a pair (tp,ml) representing an access to
    * memory. Accesses come in two varieties:
@@ -233,27 +234,44 @@ protected:
   /* All currently deadlocked threads */
   boost::container::flat_map<SymAddr, std::vector<IPid>> mutex_deadlocks;
   
-  typedef unsigned Tid;
   
   class Transaction{
   public: 
-  	Transaction(IPid pid, int tid, Tid tindex):pid(pid), tid(tid){};
+  	Transaction(IPid pid, Tid tid, unsigned tindex):pid(pid), tid(tid){};
   	
   	IPid pid;
-  	int tid;
-  	Tid tindex;
+  	Tid tid;
+  	unsigned tindex;
+
     VClock<IPid> clock, above_clock;
 
-    std::vector<Tid> happens_after; // list of transactions
+    std::vector<Tid> happens_after;
     
-    std::vector<Tid> read_from; 
+    std::vector<Tid> read_from;
     
     std::vector<Tid> modification_order;
     
     std::unordered_map<const void *, llvm::GenericValue> global_variables;
+
+
+    //
+
+    IPid get_pid(){
+      return pid;
+    }
+
+    Tid get_tid(){
+      return tid;
+    }
+
+    unsigned get_index(){
+      return tindex;
+    }
+
+
+
   
-    //supporting functions?
- 
+  
   };
   
   //TODO
@@ -329,9 +347,7 @@ protected:
      * explored traces.
      */
     int sleep_branch_trace_count;
-  private:
-    /* The hierarchical order of events. */
-    //int decision_depth;
+    
   };
 
   /* The fixed prefix of events in the current execution. This may be

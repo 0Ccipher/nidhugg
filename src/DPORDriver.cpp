@@ -412,20 +412,15 @@ DPORDriver::Result DPORDriver::run_ccv() {
     }
 
     bool assume_blocked = false;
-    //TB.reset();
     Trace *t= this->run_once(TB, mod.get(), assume_blocked);
-    //TB.compute_prefixes();
+
     tasks_left--;
+    
     TB.reset();
 
-    /*int to_create = TB.tasks_created;
-
-
-    //tasks_left += to_create;
-
-   // if (handle_trace(&TB, t, &computation_count, res, assume_blocked)) {
+    if (handle_trace(&TB, t, &computation_count, res, assume_blocked)) {
       break;
-    }
+    }/*
     if(conf.print_progress_estimate && (computation_count+1) % 100 == 0){
       estimate = std::round(TB.estimate_trace_count());
     }*/
