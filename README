@@ -224,3 +224,11 @@ Contact / Bug Report
 
    Feedback, questions or bug reports should be reported as issues on
    Github.
+
+
+Test command
+************
+
+./src/nidhuggc -ccv CCv_examples/ccvtest2.c
+
+./src/nidhuggc -ccv -extfun-no-race=printf CCv_examples/ccvtest1.c

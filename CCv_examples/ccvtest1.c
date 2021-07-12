@@ -17,7 +17,7 @@ void __VERIFIER_atomic_t2(){
 			//printf("y2 = %d: ",y);  
 	}
 	else{
-			//assert(x <= 0);
+			assert(x <= 0);
 			//y = 7;
 			//y = 1;
 			printf("x2 = %d: ",x);
@@ -38,12 +38,14 @@ void __VERIFIER_atomic_t4(){
 }
 void *thr1(void *arg){
  	__VERIFIER_atomic_t1();
- 	__VERIFIER_atomic_t2();
+ 	/* __VERIFIER_atomic_t2(); */
+        __VERIFIER_atomic_t3();
 	return NULL;
 }
 
 void *thr2(void *arg){
-	__VERIFIER_atomic_t3();
+	/* __VERIFIER_atomic_t3(); */
+	__VERIFIER_atomic_t2();
 	return NULL;
 
 }

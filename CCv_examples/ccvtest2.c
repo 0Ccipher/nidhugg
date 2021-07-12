@@ -55,12 +55,13 @@ void *thr1(void *arg){
 		__VERIFIER_atomic_t0();
  	__VERIFIER_atomic_t1();
  	__VERIFIER_atomic_t2();
- 	__VERIFIER_atomic_t3();
+        // 	__VERIFIER_atomic_t3();
 	return NULL;
 }
 
 void *thr2(void *arg){
-		__VERIFIER_atomic_t0();
+	__VERIFIER_atomic_t0();
+        __VERIFIER_atomic_t3();
 	__VERIFIER_atomic_t4();
 	return NULL;
 
