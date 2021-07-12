@@ -1087,8 +1087,8 @@ int CCVTraceBuilder::performRead(void *ptr ,llvm::Type *typ){
     const std::vector<Tid> &writes
           = writes_by_process_and_address[p][ptr];
     for(unsigned j=0; j < writes.size(); ++j){
-        //if(!transaction_happens_before(transactions[writes[j]],transactions[tid].clock)){
-        if(writes[j] <= tid){
+        if(!transaction_happens_before(transactions[writes[j]],transactions[tid].above_clock)){
+        //if(writes[j] <= tid){
             curev().can_read_from.push_back(writes[j]);
         }
     }
@@ -1097,7 +1097,7 @@ int CCVTraceBuilder::performRead(void *ptr ,llvm::Type *typ){
   if(!curev().can_read_from.empty()) {
     //curev().can_read_from[0];
     temp = curev().can_read_from.size();
-    return 1;
+    return tid;
   }
   else{
     //return 0;
