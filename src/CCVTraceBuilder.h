@@ -105,7 +105,7 @@ protected:
    */
   typedef int IPid;
 
-  typedef int Tid;
+  typedef unsigned Tid;
 
   /* An Access is a pair (tp,ml) representing an access to
    * memory. Accesses come in two varieties:
@@ -256,15 +256,15 @@ protected:
 
     //
 
-    IPid get_pid(){
+    IPid get_pid() const{
       return pid;
     }
 
-    Tid get_tid(){
+    Tid get_tid() const{
       return tid;
     }
 
-    unsigned get_index(){
+    unsigned get_index() const{
       return tindex;
     }
 
@@ -277,7 +277,7 @@ protected:
   //TODO
   std::vector<Transaction> transactions;
   int transaction_idx;
-	int temp = 0;
+	int temp = 40;
   /* Information about a (short) sequence of consecutive events by the
    * same thread. At most one event in the sequence may have conflicts
    * with other events, and if the sequence has a conflicting event,
@@ -329,7 +329,7 @@ protected:
     //TODO
     Tid tid;
     
-    std::vector<int> cad_read_from;
+    std::vector<Tid> can_read_from;
     
     std::vector<std::vector<Event>> schedules;
     
@@ -490,9 +490,13 @@ protected:
   SymData get_data(int idx, const SymAddrSize &addr) const;
   
   //TODO
-    bool is_begin(unsigned idx) const;
-    bool is_end(unsigned idx) const;
-  
+  unsigned find_process_transaction(IPid pid, int index) const;
+  bool is_begin(unsigned idx) const;
+  bool is_end(unsigned idx) const;
+  bool has_store_on_var(void *ptr, unsigned i) const;
+  bool transaction_happens_before(const Transaction &t, const VClock<int> &clock) const;
+  void add_transaction_happens_after(Tid second, Tid first);
+  void add_transaction_happens_after_thread(Tid second, IPid thread);
 
 };
 

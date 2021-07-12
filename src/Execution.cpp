@@ -1187,7 +1187,7 @@ void Interpreter::visitLoadInst(LoadInst &I) {
   auto tid = TB.performRead(Ptr,I.getType());
   //LoadValueFromMemory(Result, Ptr, I.getType());
   //int tid = 1;
-  if(tid >= 0){
+  if(tid > -1){
 	if(!transactions_vec.empty()){
 	  Transaction &t = transactions_vec[tid];
 		if(t.global_variables.count(Ptr)){
@@ -1227,7 +1227,7 @@ void Interpreter::visitStoreInst(StoreInst &I) {
 	if(0 <= AtomicFunctionCall && !transactions_vec.empty()){
   int tid = TB.performWrite(Ptr, Val);
   //int tid = 1;
-  if(tid){
+  if(tid > -1){
 	if(!transactions_vec.empty()){
 		Transaction &t = transactions_vec.back();
 		if(t.global_variables.count(Ptr)){

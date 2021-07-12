@@ -404,7 +404,7 @@ DPORDriver::Result DPORDriver::run_ccv() {
 
   uint64_t computation_count = 0;
   long double estimate = 1;
-  int tasks_left = 2;
+  int tasks_left = 1;
 
   do{
     if(conf.print_progress){
@@ -416,7 +416,7 @@ DPORDriver::Result DPORDriver::run_ccv() {
 
     tasks_left--;
     
-    TB.reset();
+    //TB.reset();
 
     if (handle_trace(&TB, t, &computation_count, res, assume_blocked)) {
       break;

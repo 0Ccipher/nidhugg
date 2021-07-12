@@ -209,7 +209,9 @@ bool CCVTraceBuilder::reset(){
 
 	for(unsigned i=0 ; i < transactions.size() ; ++i){
 			transactions[i].global_variables.clear();
-				
+      transactions[i].happens_after.clear();
+      transactions[i].read_from.clear();
+      transactions[i].modification_order.clear();
 	}
   transactions.clear();
   transaction_idx = -1;
@@ -696,21 +698,25 @@ int CCVTraceBuilder::compute_above_clock(unsigned i) {
   IPid ipid = transactions[i].get_pid();
   int tidx = transactions[i].get_index();
   if (tidx > 1) {
-    last = find_process_event(ipid, tidx-1);
-    //last = find_process_transaction(ipid, tidx-1);
+    ///last = find_process_event(ipid, tidx-1);
+    last = find_process_transaction(ipid, tidx-1);
     transactions[i].clock = transactions[last].clock;
+    //transactions[i].above_clock = transactions[last].above_clock;
   } else {
     transactions[i].clock = VClock<IPid>();
+    //transactions[i].above_clock = transactions[i].clock;
     const Thread &t = threads[ipid];
     if (t.spawn_event >= 0)
-      add_happens_after(i, t.spawn_event);
+      add_transaction_happens_after(i, t.spawn_event);
   }
   transactions[i].clock[ipid] = tidx;
+  //transactions[i].above_clock[ipid] = tidx;
 
   /* First add the non-reversible edges */
   for (unsigned j : transactions[i].happens_after){
     assert(j < i);
     transactions[i].clock += transactions[j].clock;
+    //transactions[i].above_clock +=transactions[j].above_clock;
   }
 
   transactions[i].above_clock = transactions[i].clock;
@@ -733,26 +739,43 @@ void CCVTraceBuilder::compute_vclocks(){
     }
 
 
-    //TODO
+    
     /* Then add read-from */
-    if (prefix[i].read_from && *prefix[i].read_from != -1) {
-      prefix[i].clock += prefix[*prefix[i].read_from].clock;
-      happens_after[*prefix[i].read_from].push_back(i);
+    if(!transactions[i].read_from.empty()){
+      for(unsigned j = 0; j < transactions[i].read_from.size() ; ++j){
+        if (transactions[i].read_from[j] != -1) {
+          transactions[i].clock += transactions[transactions[i].read_from[j]].clock;
+          //transactions[i].above_clock += transactions[transactions[i].read_from[j]].above_clock;
+          //happens_after[transactions[i].read_from[j]].push_back(i);
+        }
+      }
+    }// [po U rf ]* 
+
+    //transactions[i].above_clock = transactions[i].clock;   
+
+    if(!transactions[i].modification_order.empty()){
+      for(unsigned j = 0; j < transactions[i].modification_order.size() ; ++j){
+        if (transactions[i].modification_order[j] != -1) {
+          //transactions[i].clock += transactions[transactions[i].modification_order[j]].clock;
+          //happens_after[transactions[i].modification_order[j]].push_back(i);
+        }
+      }
     }
-  }
+  } // [po U rf U co]* 
+
 
   /* The top of our vector clock lattice, initial value of the below
    * clock (excluding itself) for evey event */
   VClock<IPid> top;
   for (unsigned i = 0; i < threads.size(); ++i)
-    top[i] = threads[i].event_indices.size();
-  below_clocks.assign(threads.size(), prefix.size(), top);
+    top[i] = threads[i].transaction_indices.size();
+  below_clocks.assign(threads.size(), transactions.size(), top);
 
-  for (unsigned i = prefix.size();;) {
+  for (unsigned i = transactions.size();;) {
     if (i == 0) break;
     auto clock = below_clocks[--i];
-    Event &e = prefix[i];
-    clock[e.iid.get_pid()] = e.iid.get_index();
+    Transaction &t = transactions[i];
+    clock[t.get_pid()] = t.get_index();
     for (unsigned j : happens_after[i]) {
       assert (i < j);
       clock -= below_clocks[j];
@@ -918,6 +941,8 @@ inline unsigned CCVTraceBuilder::find_process_event(IPid pid, int index) const{
   return k;
 }
 
+
+
 long double CCVTraceBuilder::estimate_trace_count() const{
   return estimate_trace_count(0);
 }
@@ -941,7 +966,51 @@ long double CCVTraceBuilder::estimate_trace_count(int idx) const{
 }
 
 //TODO
- void CCVTraceBuilder::createNextEvent(){
+inline unsigned CCVTraceBuilder::find_process_transaction(IPid pid, int index) const{
+  assert(pid >= 0 && pid < int(threads.size()));
+  assert(index >= 1 && index <= int(threads[pid].transaction_indices.size()));
+  unsigned k = threads[pid].transaction_indices[index-1];
+  assert(k < transactions.size());
+  assert(transactions[k].get_pid() == pid
+         && transactions[k].get_index() < index);
+
+  return k;
+}
+void CCVTraceBuilder::add_transaction_happens_after(Tid second, Tid first){
+  assert(first != ~0u);
+  assert(second != ~0u);
+  assert(first != second);
+  assert(first < second);
+  assert((long long)second <= transaction_idx);
+
+  std::vector<Tid> &vec = transactions[second].happens_after;
+  if (vec.size() && vec.back() == first) return;
+
+  vec.push_back(first);
+}
+
+void CCVTraceBuilder::add_transaction_happens_after_thread(Tid second, IPid thread){
+  assert((int)second == transaction_idx);
+  if (threads[thread].transaction_indices.empty()) return;
+  add_happens_after(second, threads[thread].transaction_indices.back());
+}
+
+bool CCVTraceBuilder::transaction_happens_before(const Transaction &t,
+                                     const VClock<int> &clock) const {
+  IID<IPid> tiid(t.get_pid(),t.get_index());
+  return clock.includes(tiid);
+}
+
+bool CCVTraceBuilder::has_store_on_var(void *ptr, unsigned i) const {
+  const Transaction &t = transactions[i];
+  if(t.global_variables.count(ptr)){
+    return true;
+  }
+  return false;
+}
+
+
+void CCVTraceBuilder::createNextEvent(){
       auto p = curev().iid.get_pid();
  			++prefix_idx;
       assert(prefix_idx == int(prefix.size()));
@@ -999,6 +1068,50 @@ int CCVTraceBuilder:: performWrite(void *ptr, llvm::GenericValue val){
 
 int CCVTraceBuilder::performRead(void *ptr ,llvm::Type *typ){
 	int tid = curev().tid;
+
+  compute_vclocks(); // computes [po U rf]* and [po U rf U co]*
+
+  std::map<const void *,std::vector<Tid>> writes_by_address;
+  std::vector<std::unordered_map<const void *,std::vector<Tid>>>
+    writes_by_process_and_address(threads.size());
+  for (unsigned j = 0; j < transactions.size(); ++j) {
+
+    if (has_store_on_var(ptr,j))     
+      writes_by_address[ptr].push_back(j);
+
+    if (has_store_on_var(ptr,j))
+      writes_by_process_and_address[transactions[j].get_pid()][ptr].push_back(j);
+  }
+
+  for (unsigned p = 0; p < threads.size(); ++p){
+    const std::vector<Tid> &writes
+          = writes_by_process_and_address[p][ptr];
+    for(unsigned j=0; j < writes.size(); ++j){
+        //if(!transaction_happens_before(transactions[writes[j]],transactions[tid].clock)){
+        if(writes[j] <= tid){
+            curev().can_read_from.push_back(writes[j]);
+        }
+    }
+  }
+
+  if(!curev().can_read_from.empty()) {
+    //curev().can_read_from[0];
+    temp = curev().can_read_from.size();
+    return 1;
+  }
+  else{
+    //return 0;
+    Transaction &t = transactions.back();
+    if(!transactions.empty() && curev().iid.get_pid() == t.pid){
+      if(t.global_variables.count(ptr)){
+        return transaction_idx;
+      }
+    }
+    else{
+        return 0;
+    }
+  }
+  /*
 	Transaction &t = transactions.back();
 	if(!transactions.empty() && curev().iid.get_pid() == t.pid){
 		if(t.global_variables.count(ptr)){
@@ -1007,7 +1120,7 @@ int CCVTraceBuilder::performRead(void *ptr ,llvm::Type *typ){
 	}
 	else{
 		return 0;
-	}
+	}*/
 }
 
 uint64_t CCVTraceBuilder::tracecount(){
@@ -1023,6 +1136,6 @@ uint64_t CCVTraceBuilder::tracecount(){
 				//t = t + value;
 				t++;
 	}
-	//t = temp;
+	t = temp;
 	return t;
 }
