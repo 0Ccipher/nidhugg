@@ -418,7 +418,7 @@ DPORDriver::Result DPORDriver::run_ccv() {
     
     //TB.reset();
 
-    if (handle_trace(&TB, t, &computation_count, res, assume_blocked)) {
+    /*if (handle_trace(&TB, t, &computation_count, res, assume_blocked)) {
       break;
     }/*
     if(conf.print_progress_estimate && (computation_count+1) % 100 == 0){

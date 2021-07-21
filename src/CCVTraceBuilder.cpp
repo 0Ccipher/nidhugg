@@ -209,9 +209,7 @@ bool CCVTraceBuilder::reset(){
 
 	for(unsigned i=0 ; i < transactions.size() ; ++i){
 			transactions[i].global_variables.clear();
-      transactions[i].happens_after.clear();
-      transactions[i].read_from.clear();
-      transactions[i].modification_order.clear();
+      transactions[i].current_reads.clear();
 	}
   transactions.clear();
   transaction_idx = -1;
@@ -295,7 +293,7 @@ bool CCVTraceBuilder::store(const SymData &sd){
 bool CCVTraceBuilder::atomic_store(const SymData &sd){
   if (!record_symbolic(SymEv::Store(sd))) return false;
   if(!transactions.empty() && curev().iid.get_pid() == transactions.back().pid) 
-  	curev().tid = transactions.back().pid;
+  	curev().tid = transaction_idx;
   do_atomic_store(sd);
   return true;
 }
@@ -323,7 +321,7 @@ bool CCVTraceBuilder::atomic_rmw(const SymData &sd){
 bool CCVTraceBuilder::load(const SymAddrSize &ml){
   if (!record_symbolic(SymEv::Load(ml))) return false;
   if(!transactions.empty() && curev().iid.get_pid() == transactions.back().pid) 
-  	curev().tid = transactions.back().pid;
+  	curev().tid = transaction_idx;
   do_load(ml);
   return true;
 }
@@ -693,95 +691,6 @@ static It frontier_filter(It first, It last, LessFn less){
   return fill;
 }
 
-int CCVTraceBuilder::compute_above_clock(unsigned i) {
-  int last = -1;
-  IPid ipid = transactions[i].get_pid();
-  int tidx = transactions[i].get_index();
-  if (tidx > 1) {
-    ///last = find_process_event(ipid, tidx-1);
-    last = find_process_transaction(ipid, tidx-1);
-    transactions[i].clock = transactions[last].clock;
-    //transactions[i].above_clock = transactions[last].above_clock;
-  } else {
-    transactions[i].clock = VClock<IPid>();
-    //transactions[i].above_clock = transactions[i].clock;
-    const Thread &t = threads[ipid];
-    if (t.spawn_event >= 0)
-      add_transaction_happens_after(i, t.spawn_event);
-  }
-  transactions[i].clock[ipid] = tidx;
-  //transactions[i].above_clock[ipid] = tidx;
-
-  /* First add the non-reversible edges */
-  for (unsigned j : transactions[i].happens_after){
-    assert(j < i);
-    transactions[i].clock += transactions[j].clock;
-    //transactions[i].above_clock +=transactions[j].above_clock;
-  }
-
-  transactions[i].above_clock = transactions[i].clock;
-  return last;
-}
-
-void CCVTraceBuilder::compute_vclocks(){
-  Timing::Guard timing_guard(vclocks_context);
-  /* The first event of a thread happens after the spawn event that
-   * created it.
-   */
-  std::vector<llvm::SmallVector<unsigned,2>> happens_after(transactions.size());
-  for (unsigned i = 0; i < transactions.size(); i++){
-    /* First add the non-reversible edges */
-    int last = compute_above_clock(i);
-
-    if (last != -1) happens_after[last].push_back(i);
-    for (unsigned j : transactions[i].happens_after){
-      happens_after[j].push_back(i);
-    }
-
-
-    
-    /* Then add read-from */
-    if(!transactions[i].read_from.empty()){
-      for(unsigned j = 0; j < transactions[i].read_from.size() ; ++j){
-        if (transactions[i].read_from[j] != -1) {
-          transactions[i].clock += transactions[transactions[i].read_from[j]].clock;
-          //transactions[i].above_clock += transactions[transactions[i].read_from[j]].above_clock;
-          //happens_after[transactions[i].read_from[j]].push_back(i);
-        }
-      }
-    }// [po U rf ]* 
-
-    //transactions[i].above_clock = transactions[i].clock;   
-
-    if(!transactions[i].modification_order.empty()){
-      for(unsigned j = 0; j < transactions[i].modification_order.size() ; ++j){
-        if (transactions[i].modification_order[j] != -1) {
-          //transactions[i].clock += transactions[transactions[i].modification_order[j]].clock;
-          //happens_after[transactions[i].modification_order[j]].push_back(i);
-        }
-      }
-    }
-  } // [po U rf U co]* 
-
-
-  /* The top of our vector clock lattice, initial value of the below
-   * clock (excluding itself) for evey event */
-  VClock<IPid> top;
-  for (unsigned i = 0; i < threads.size(); ++i)
-    top[i] = threads[i].transaction_indices.size();
-  below_clocks.assign(threads.size(), transactions.size(), top);
-
-  for (unsigned i = transactions.size();;) {
-    if (i == 0) break;
-    auto clock = below_clocks[--i];
-    Transaction &t = transactions[i];
-    clock[t.get_pid()] = t.get_index();
-    for (unsigned j : happens_after[i]) {
-      assert (i < j);
-      clock -= below_clocks[j];
-    }
-  }
-}
 
 
 bool CCVTraceBuilder::record_symbolic(SymEv event){
@@ -966,13 +875,62 @@ long double CCVTraceBuilder::estimate_trace_count(int idx) const{
 }
 
 //TODO
+
+int CCVTraceBuilder::compute_above_clock(unsigned i) {
+  int last = -1;
+  IPid ipid = transactions[i].get_pid();
+  int tidx = transactions[i].get_index();
+
+  if (tidx > 1) {
+    last = find_process_transaction(ipid, tidx-1);
+    transactions[i].clock = transactions[last].clock;
+    transactions[i].above_clock = transactions[last].above_clock;
+  } else {
+    transactions[i].clock = VClock<IPid>();
+    transactions[i].above_clock = VClock<IPid>();
+  }
+  transactions[i].clock[ipid] = tidx;
+  transactions[i].above_clock[ipid] = tidx;
+  
+  return last;
+}
+
+void CCVTraceBuilder::compute_vclocks(){
+  /* The first event of a thread happens after the spawn event that
+   * created it.
+   */
+  for (unsigned i = 0; i < transactions.size(); i++){
+    /* First add the non-reversible edges */
+    int last = compute_above_clock(i);
+   
+  // Then add read-from 
+  if(!transactions[i].read_from.empty()){
+    for(unsigned j = 0; j < transactions[i].read_from.size() ; ++j){
+      if(transactions[i].read_from[j] != -1) {
+        transactions[i].clock += transactions[transactions[i].read_from[j]].clock;
+        transactions[i].above_clock += transactions[transactions[i].read_from[j]].above_clock;
+      }
+    }
+  }// [po U rf ]* 
+
+  if(!transactions[i].modification_order.empty()){
+    for(unsigned j = 0; j < transactions[i].modification_order.size() ; ++j){
+        if (transactions[i].modification_order[j] != -1) {
+          transactions[i].clock += transactions[transactions[i].modification_order[j]].clock;
+        }
+      }
+    }
+  } // [po U rf U co]* 
+
+}
+
 inline unsigned CCVTraceBuilder::find_process_transaction(IPid pid, int index) const{
   assert(pid >= 0 && pid < int(threads.size()));
   assert(index >= 1 && index <= int(threads[pid].transaction_indices.size()));
   unsigned k = threads[pid].transaction_indices[index-1];
   assert(k < transactions.size());
   assert(transactions[k].get_pid() == pid
-         && transactions[k].get_index() < index);
+         && transactions[k].get_index() == index);
 
   return k;
 }
@@ -1034,8 +992,9 @@ void CCVTraceBuilder::beginTransaction(int tid) {
   bool r = record_symbolic(SymEv::Begin(tid));
 	++transaction_idx;
   assert(transaction_idx == int(transactions.size()));
-  threads[pid].transaction_indices.push_back(transaction_idx);
-  Transaction t(pid,tid,threads[pid].last_transaction_index());
+  threads[pid].transaction_indices.emplace_back(transaction_idx);
+  unsigned tidx = threads[pid].last_transaction_index();
+  Transaction t(pid,tid,tidx);
   transactions.emplace_back(t);
   if(!transactions.empty() && curev().iid.get_pid() == transactions.back().pid) 
   	curev().tid = transactions.back().tid;
@@ -1066,61 +1025,70 @@ int CCVTraceBuilder:: performWrite(void *ptr, llvm::GenericValue val){
 		return 0;
 }
 
+
 int CCVTraceBuilder::performRead(void *ptr ,llvm::Type *typ){
+  Timing::Guard timing_guard(try_read_from_context);
+
 	int tid = curev().tid;
+
+  Transaction &cur_transaction = transactions.back();
+  // TODO:Local read
+    if(!transactions.empty() && curev().iid.get_pid() == cur_transaction.pid){
+      if(cur_transaction.global_variables.count(ptr)){
+        return transaction_idx;
+      }
+    }
+    // If a read on this variable is already present
+    if(cur_transaction.current_reads.count(ptr)){
+      return cur_transaction.current_reads[ptr];
+    }
 
   compute_vclocks(); // computes [po U rf]* and [po U rf U co]*
 
-  std::map<const void *,std::vector<Tid>> writes_by_address;
-  std::vector<std::unordered_map<const void *,std::vector<Tid>>>
-    writes_by_process_and_address(threads.size());
+  std::vector<std::vector<unsigned>> writes_by_process(threads.size()); // mapping: [process -> transactions(W_ptr)]
+  std::vector<unsigned> happens_before;
   for (unsigned j = 0; j < transactions.size(); ++j) {
-
-    if (has_store_on_var(ptr,j))     
-      writes_by_address[ptr].push_back(j);
-
-    if (has_store_on_var(ptr,j))
-      writes_by_process_and_address[transactions[j].get_pid()][ptr].push_back(j);
+    if (has_store_on_var(ptr,j)){
+      writes_by_process[transactions[j].get_pid()].push_back(j);
+      if(transaction_happens_before(transactions[j],cur_transaction.above_clock)) {
+        happens_before.emplace_back(j);
+      }
+    }
   }
-
+  
   for (unsigned p = 0; p < threads.size(); ++p){
-    const std::vector<Tid> &writes
-          = writes_by_process_and_address[p][ptr];
-    for(unsigned j=0; j < writes.size(); ++j){
-        if(!transaction_happens_before(transactions[writes[j]],transactions[tid].above_clock)){
-        //if(writes[j] <= tid){
-            curev().can_read_from.push_back(writes[j]);
+    const std::vector<unsigned> &writes = writes_by_process[p];
+
+    /*auto end = std::lower_bound(writes.begin(), writes.end(), transactions[transaction_idx].get_index(),
+                                    [this](unsigned w, int index) {
+                                      const IPid tpid = transactions[transaction_idx].get_pid();
+                                      return transacti4ons[w].above_clock[tpid] < index;
+                                    });
+    auto start = writes.begin();*/
+   
+    for(auto j: writes){
+      for(auto k: happens_before){
+        if( j == k || !transaction_happens_before(transactions[j],transactions[k].clock)) {
+          curev().can_read_from.emplace_back(j);
+          temp++;
         }
+      }
+      
     }
   }
 
   if(!curev().can_read_from.empty()) {
-    //curev().can_read_from[0];
-    temp = curev().can_read_from.size();
-    return tid;
-  }
-  else{
-    //return 0;
-    Transaction &t = transactions.back();
-    if(!transactions.empty() && curev().iid.get_pid() == t.pid){
-      if(t.global_variables.count(ptr)){
-        return transaction_idx;
-      }
+    int reads_from = curev().can_read_from.back();
+    curev().can_read_from.pop_back();
+    for(auto j : curev().can_read_from){
+      transactions[reads_from].modification_order.emplace_back(j);
     }
-    else{
-        return 0;
-    }
+    cur_transaction.read_from.emplace_back(reads_from);
+    cur_transaction.current_reads.insert({ptr,reads_from});
+
+    return reads_from;
   }
-  /*
-	Transaction &t = transactions.back();
-	if(!transactions.empty() && curev().iid.get_pid() == t.pid){
-		if(t.global_variables.count(ptr)){
-			return transaction_idx;
-		}
-	}
-	else{
-		return 0;
-	}*/
+
 }
 
 uint64_t CCVTraceBuilder::tracecount(){
@@ -1130,12 +1098,6 @@ uint64_t CCVTraceBuilder::tracecount(){
 		if(is_store(i) && prefix[i].tid > 0)
 			t++;
 	}*/
-	for(unsigned i=0 ; i < transactions.size() ; ++i){
-			for(auto j = transactions[i].global_variables.begin() ; j != transactions[i].global_variables.end() ; j++)
-				//value = j->second.IntVal.getSExtValue();
-				//t = t + value;
-				t++;
-	}
 	t = temp;
 	return t;
 }

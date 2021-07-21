@@ -237,7 +237,7 @@ protected:
   
   class Transaction{
   public: 
-  	Transaction(IPid pid, Tid tid, unsigned tindex):pid(pid), tid(tid){};
+  	Transaction(IPid pid, Tid tid, unsigned tindex):pid(pid), tid(tid) , tindex(tindex) {};
   	
   	IPid pid;
   	Tid tid;
@@ -252,7 +252,7 @@ protected:
     std::vector<Tid> modification_order;
     
     std::unordered_map<const void *, llvm::GenericValue> global_variables;
-
+    std::unordered_map<const void *, Tid> current_reads;
 
     //
 
@@ -267,7 +267,6 @@ protected:
     unsigned get_index() const{
       return tindex;
     }
-
 
 
   
@@ -490,6 +489,10 @@ protected:
   SymData get_data(int idx, const SymAddrSize &addr) const;
   
   //TODO
+  std::vector<Event> obs;
+  std::vector<Transaction> obst;
+  int cur_read =-1;
+  int cur_transaction = -1;
   unsigned find_process_transaction(IPid pid, int index) const;
   bool is_begin(unsigned idx) const;
   bool is_end(unsigned idx) const;
