@@ -204,3 +204,18 @@ unsigned SrcLocVectorBuilder::intern_string(std::string &&s) {
   lookup.emplace(std::move(s), no);
   return no;
 }
+
+TIDSeqTrace TIDSeqTraceBuilder::build() {
+  TIDSeqTrace ret(std::move(vector));
+  vector.transactions.clear();
+  return ret;
+}
+
+void TIDSeqTraceBuilder::push_from(int pid, int tid, int tindex, VClock<int> clk, std::vector<unsigned> reads) {
+  vector.transactions.emplace_back(pid, tid, tindex);
+  vector.trns_idx++;
+  vector.transactions[vector.trns_idx].clock = clk;
+  vector.transactions[vector.trns_idx].read_from.resize(reads.size());
+  vector.transactions[vector.trns_idx].read_from = reads;
+}
+

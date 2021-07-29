@@ -25,6 +25,8 @@
 #include "Interpreter.h"
 #include <sstream>
 #include <stdexcept>
+#include <set>
+#include <iterator>
 
 #define ANSIRed "\x1b[91m"
 #define ANSIRst "\x1b[m"
@@ -67,12 +69,11 @@ bool CCVTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *dryrun){
   }
   *dryrun = false;
   *alt = 0;
-  *aux = -1; /* No auxilliary threads in SC */
+  *aux = -1; /* No auxilliary threads in CCV */
   if(replay){
-    /* Are we done with the current Event? */
-    if (0 <= prefix_idx && threads[curev().iid.get_pid()].last_event_index() <
+     if (0 <= prefix_idx && threads[curev().iid.get_pid()].last_event_index() <
         curev().iid.get_index() + curev().size - 1) {
-      /* Continue executing the current Event */
+      //Continue executing the current Event 
       IPid pid = curev().iid.get_pid();
       *proc = pid;
       *alt = 0;
@@ -81,23 +82,18 @@ bool CCVTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *dryrun){
         llvm::dbgs() << "At replay step " << prefix_idx << ", iid "
                      << iid_string(IID<IPid>(pid, threads[curev().iid.get_pid()].last_event_index()))
                      << "\n";
+
         abort();
       }
       threads[pid].event_indices.push_back(prefix_idx);
       return true;
-    } else if(prefix_idx + 1 == int(prefix.size())) {
-      /* We are done replaying. Continue below... */
-      assert(prefix_idx < 0 || (curev().sym.empty() ^ seen_effect)
-             || (errors.size() && errors.back()->get_location()
-                 == IID<CPid>(threads[curev().iid.get_pid()].cpid,
-                              curev().iid.get_index())));
-      replay = false;
-    } else {
-      /* Go to the next event. */
-      assert(prefix_idx < 0 || (curev().sym.empty() ^ seen_effect)
-             || (errors.size() && errors.back()->get_location()
-                 == IID<CPid>(threads[curev().iid.get_pid()].cpid,
-                              curev().iid.get_index())));
+     }
+    else if(prefix_idx + 1 == int(prefix.size())){
+        replay = false;
+      }
+     else{
+      // Go to the next event. 
+      assert(prefix_idx < 0 || prefix_idx < prefix.size());
       seen_effect = false;
       ++prefix_idx;
       IPid pid = curev().iid.get_pid();
@@ -120,8 +116,8 @@ bool CCVTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *dryrun){
      prefix[prefix.size()-1].iid.get_pid()
      == prefix[prefix.size()-2].iid.get_pid() &&
      !prefix[prefix.size()-1].may_conflict){
-    assert(curev().sym.empty()); /* Would need to be copied */
-    assert(curev().sym.empty()); /* Can't happen */
+    assert(curev().sym.empty()); // Would need to be copied 
+    assert(curev().sym.empty()); // Can't happen 
     prefix.pop_back();
     --prefix_idx;
     ++curev().size;
@@ -192,29 +188,153 @@ bool CCVTraceBuilder::sleepset_is_empty() const{
 Trace *CCVTraceBuilder::get_trace() const{
   std::vector<IID<CPid> > cmp;
   SrcLocVectorBuilder cmp_md;
+  TIDSeqTraceBuilder cmp_trns;
   std::vector<Error*> errs;
-  for(unsigned i = 0; i < prefix.size(); ++i){
+  for(unsigned i = 0; i < prefix.size(); ++i) {
     cmp.push_back(IID<CPid>(threads[prefix[i].iid.get_pid()].cpid,prefix[i].iid.get_index()));
     cmp_md.push_from(prefix[i].md);
   };
+  for(unsigned i=0 ; i < transactions.size(); ++i) {
+    cmp_trns.push_from(transactions[i].get_pid() , transactions[i].get_tid() , transactions[i].get_index(),
+                                                   transactions[i].clock , transactions[i].read_from);
+  }
   for(unsigned i = 0; i < errors.size(); ++i){
     errs.push_back(errors[i]->clone());
   }
-  Trace *t = new IIDSeqTrace(cmp,cmp_md.build(),errs);
+  Trace *t = new IIDSeqTrace(cmp,cmp_md.build(),errs, cmp_trns.build());
   t->set_blocked(!sleepset_is_empty());
   return t;
 }
 
 bool CCVTraceBuilder::reset(){
 
-	for(unsigned i=0 ; i < transactions.size() ; ++i){
-			transactions[i].global_variables.clear();
-      transactions[i].current_reads.clear();
-	}
+  if( prefix.size() <= 0)
+    return false;
+  int cur_events = -1;
+  int cur_transactions = -1;
+  int tidx=0;
+
+  for(int i = prefix.size()-1 ;  i >= 0 ; i--) {
+    if(is_load(i) && (!prefix[i].can_read_from.empty() || !prefix[i].schedules.empty())){
+      /* If write source are available. TODO: Schedules.*/
+      cur_events = i;
+      cur_transactions = prefix[i].tid;
+      tidx = cur_transactions-1;
+      int last_read_from = *prefix[i].read_from;
+      assert(prefix[i].possible_reads[last_read_from]);
+      /*: Update old read's modification order i.e. transaction[last_read_from], create modification order for new read_from 
+      , i.e transaction[reads_from] */
+      std::set<unsigned> &happens_before = prefix[i].happens_before;
+      //std::map<int,bool>::reverse_iterator it;
+      // Remove(Undo) the co edges 
+      //for(it = prefix[i].possible_reads.rbegin(); it != prefix[i].possible_reads.rend() ; it++){
+        //if(!(it->second)){
+        for(auto j : prefix[i].possible_reads){
+          if(!j.second){
+            if(happens_before.count(j.first) != 0) { //Ensures that this write [hb] this read
+              transactions[last_read_from].modification_order.pop_back();
+            }
+          }
+        }
+
+      prefix[i].possible_reads[last_read_from] = false;
+      /* Remove the rf edge */
+      transactions[tidx].read_from.pop_back();
+
+      /*Allow to read from the nexet available source*/
+      {
+        int reads_from = prefix[i].can_read_from.back();
+        prefix[i].can_read_from.pop_back();
+        prefix[i].possible_reads[reads_from] = true;
+
+        for(auto j : prefix[i].possible_reads){
+          if(!j.second){
+            if(happens_before.count(j.first) != 0) { //Ensures that this write [hb] this read
+              transactions[reads_from].modification_order.emplace_back(j.first);
+            }
+          }
+        }
+
+        transactions[tidx].read_from.emplace_back(reads_from);
+        prefix[i].read_from = reads_from;
+      }
+      /* Remove the current read from the transactions if it's the last write source*/
+      {
+        /*if(prefix[i].can_read_from.empty()){
+          transactions[tidx].current_reads_vector.pop_back();
+        }*/
+      }
+      break;
+    }
+  }
+  // Update the current events for replay
+  std::vector<Event> new_prefix;
+  for(int i=0 ; i < cur_events+1 ;i++){
+    Event &e = prefix[i];
+    int pid = e.iid.get_pid();
+    int index = e.iid.get_index();
+    IID<IPid> iid(pid, index);
+    new_prefix.emplace_back(iid);
+    new_prefix.back().size = e.size;
+    new_prefix.back().sym = std::move(e.sym);
+    new_prefix.back().pinned = e.pinned;
+    new_prefix.back().read_from = *e.read_from;
+    if(!e.can_read_from.empty())
+      new_prefix.back().can_read_from = std::move(e.can_read_from);
+    if(!e.possible_reads.empty())
+      new_prefix.back().possible_reads = std::move(e.possible_reads);
+    if(!e.happens_before.empty())
+      new_prefix.back().happens_before = std::move(e.happens_before);
+    if(!e.schedules.empty())
+      new_prefix.back().schedules = std::move(e.schedules);
+    new_prefix.back().localread = e.localread;
+    new_prefix.back().swappable = e.swappable;
+    new_prefix.back().sym = std::move(e.sym);
+    new_prefix.back().tid = e.tid;
+  }
+  //Create the updated prefix
+  replay_prefix = std::move(new_prefix);
+  //prefix = std::move(new_prefix);
+
+  //Create updated transactions
+  for(int i=0 ; i < transactions.size() ; i++){
+    transactions[i].global_variables.clear();
+    transactions[i].current_reads.clear();
+  }
+  /*for(int i =0 ; i < replay_transactions.size() ; i++){
+    replay_transactions[i].global_variables.clear();
+    replay_transactions[i].current_reads.clear();
+  }*/
+
+  std::vector<Transaction> new_transactions;
+  for(unsigned i = 0 ; i < tidx+1 ; i++){
+    Transaction &t = transactions[i];
+    IPid pid = t.get_pid();
+    Tid tid = t.get_tid();
+    unsigned tindex = t.get_index();
+    Transaction tr(pid,tid,tindex);
+    new_transactions.emplace_back(tr);
+    if(!t.modification_order.empty())
+      new_transactions.back().modification_order = std::move(t.modification_order);
+    //for(auto j: new_transactions.back().modification_order)
+      //temp ++;
+  }
+  
+  replay_transactions = std::move(new_transactions);
+  //transactions = std::move(new_transactions);
+
+  prefix.clear();
   transactions.clear();
   transaction_idx = -1;
-  
-  prefix.clear();
+  prefix_idx = -1;
+
+  //replay = true;
+  replay = false; 
+  //replay_point = cur_events+1;
+  replay_point = 0;
+  tasks_created = 0;
+
+
   CPS = CPidSystem();
   threads.clear();
   threads.push_back(Thread(CPid(),-1));
@@ -223,11 +343,9 @@ bool CCVTraceBuilder::reset(){
   mem.clear();
   mutex_deadlocks.clear();
   last_full_memory_conflict = -1;
-  prefix_idx = -1;
-  replay = false;
+  
   cancelled = false;
-  last_md = 0;
-  tasks_created = 0;
+  last_md = 0;  
   reset_cond_branch_log();
 
   return true;
@@ -273,7 +391,43 @@ std::string CCVTraceBuilder::iid_string(IID<IPid> iid) const{
 
 void CCVTraceBuilder::debug_print() const {
   llvm::dbgs() << "CCVTraceBuilder (debug print, replay until " << replay_point << "):\n";
-  
+  int idx_offs = 0;
+  int iid_offs = 0;
+  int rf_offs = 0;
+  int clock_offs = 0;
+  std::vector<std::string> lines(prefix.size(), "");
+
+  for(unsigned i = 0; i < prefix.size(); ++i){
+    IPid ipid = prefix[i].iid.get_pid();
+    idx_offs = std::max(idx_offs,int(std::to_string(i).size()));
+    iid_offs = std::max(iid_offs,2*ipid+int(iid_string(i).size()));
+    rf_offs = std::max(rf_offs,prefix[i].read_from ?
+                       int(std::to_string(*prefix[i].read_from).size())
+                       : 1);
+    clock_offs = std::max(clock_offs,int(prefix[i].clock.to_string().size()));
+    lines[i] = prefix[i].sym.to_string();
+  }
+
+  for(unsigned i = 0; i < prefix.size(); ++i){
+    IPid ipid = prefix[i].iid.get_pid();
+    llvm::dbgs() << " " << lpad(std::to_string(i),idx_offs)
+                 << rpad("",1+ipid*2)
+                 << rpad(iid_string(i),iid_offs-ipid*2)
+                 << " " << lpad((prefix[i].pinned ? "*" : ""),rf_offs)
+                 << " " << lpad(prefix[i].read_from ? std::to_string(*prefix[i].read_from) : "-",rf_offs)
+                 << " " << rpad(prefix[i].clock.to_string(),clock_offs)
+                 << " " << lines[i] << "\n";
+  }
+  for (unsigned i = prefix.size(); i < lines.size(); ++i){
+    llvm::dbgs() << std::string(2+iid_offs + 1+clock_offs, ' ') << lines[i] << "\n";
+  }
+  if(errors.size()){
+    llvm::dbgs() << "Errors:\n";
+    for(unsigned i = 0; i < errors.size(); ++i){
+      llvm::dbgs() << "  Error #" << i+1 << ": "
+                   << errors[i]->to_string() << "\n";
+    }
+  } 
 }
 
 bool CCVTraceBuilder::spawn(){
@@ -281,7 +435,8 @@ bool CCVTraceBuilder::spawn(){
   CPid child_cpid = CPS.spawn(threads[parent_ipid].cpid);
   threads.push_back(Thread(child_cpid,prefix_idx));
   curev().may_conflict = true;
-  return record_symbolic(SymEv::Spawn(threads.size() - 1));
+  bool res = record_symbolic(SymEv::Spawn(threads.size() - 1));
+  return res;
 }
 
 bool CCVTraceBuilder::store(const SymData &sd){
@@ -293,7 +448,7 @@ bool CCVTraceBuilder::store(const SymData &sd){
 bool CCVTraceBuilder::atomic_store(const SymData &sd){
   if (!record_symbolic(SymEv::Store(sd))) return false;
   if(!transactions.empty() && curev().iid.get_pid() == transactions.back().pid) 
-  	curev().tid = transaction_idx;
+  	curev().tid = transactions[transaction_idx].tid;
   do_atomic_store(sd);
   return true;
 }
@@ -321,7 +476,7 @@ bool CCVTraceBuilder::atomic_rmw(const SymData &sd){
 bool CCVTraceBuilder::load(const SymAddrSize &ml){
   if (!record_symbolic(SymEv::Load(ml))) return false;
   if(!transactions.empty() && curev().iid.get_pid() == transactions.back().pid) 
-  	curev().tid = transaction_idx;
+  	curev().tid = transactions[transaction_idx].tid;
   do_load(ml);
   return true;
 }
@@ -372,7 +527,8 @@ bool CCVTraceBuilder::fence(){
 }
 
 bool CCVTraceBuilder::join(int tgt_proc){
-  if (!record_symbolic(SymEv::Join(tgt_proc))) return false;
+  bool r = record_symbolic(SymEv::Join(tgt_proc));
+  if(!r)  return false;
   curev().may_conflict = true;
   add_happens_after_thread(prefix_idx, tgt_proc);
   return true;
@@ -517,17 +673,6 @@ bool CCVTraceBuilder::cond_broadcast(const SymAddrSize &ml){
     pthreads_error("cond_broadcast called with uninitialized condition variable.");
     return false;
   }
-  CondVar &cond_var = it->second;
-  for(int i : cond_var.waiters){
-    assert(0 <= i && i < prefix_idx);
-    IPid ipid = prefix[i].iid.get_pid();
-    assert(!threads[ipid].available);
-    threads[ipid].available = true;
-    // seen_events.insert(i);
-  }
-  cond_var.waiters.clear();
-  cond_var.last_signal = prefix_idx;
-
   return true;
 }
 
@@ -719,8 +864,7 @@ bool CCVTraceBuilder::record_symbolic(SymEv event){
 
 bool CCVTraceBuilder::is_load(unsigned i) const {
   const SymEv &e = prefix[i].sym;
-  return e.kind == SymEv::LOAD || e.kind == SymEv::RMW
-    || e.kind == SymEv::CMPXHG || e.kind == SymEv::CMPXHGFAIL;
+  return e.kind == SymEv::LOAD_CCV;
 }
 
 bool CCVTraceBuilder::is_minit(unsigned i) const {
@@ -734,8 +878,7 @@ bool CCVTraceBuilder::is_mdelete(unsigned i) const {
 
 bool CCVTraceBuilder::is_store(unsigned i) const {
   const SymEv &e = prefix[i].sym;
-  return e.kind == SymEv::STORE || e.kind == SymEv::CMPXHG
-    || e.kind == SymEv::RMW;
+  return e.kind == SymEv::STORE_CCV;
 }
 
 
@@ -969,13 +1112,51 @@ bool CCVTraceBuilder::has_store_on_var(void *ptr, unsigned i) const {
 
 
 void CCVTraceBuilder::createNextEvent(){
+  //Are we replaying
+  if(replay){
+    if (0 <= prefix_idx && threads[curev().iid.get_pid()].last_event_index() <
+        curev().iid.get_index() + curev().size - 1) {
+      //Continue executing the current Event 
+      IPid pid = curev().iid.get_pid();
+      threads[pid].event_indices.push_back(prefix_idx);
+      return;
+     }
+    if(prefix_idx == prefix.size()-1){
+      replay = false;
+    }
+    else{
+      // And <= 
       auto p = curev().iid.get_pid();
- 			++prefix_idx;
-      assert(prefix_idx == int(prefix.size()));
+      seen_effect = false;
+      ++prefix_idx;
+      assert(prefix_idx <= int(prefix.size()));
       threads[p].event_indices.push_back(prefix_idx);
-      prefix.emplace_back(IID<IPid>(IPid(p),threads[p].last_event_index()));
-  
+      return;
+    }
   }
+  // Should we merge the last two events? 
+  if(prefix.size() > 1 &&
+     prefix[prefix.size()-1].iid.get_pid()
+     == prefix[prefix.size()-2].iid.get_pid() &&
+     !prefix[prefix.size()-1].may_conflict){
+    assert(curev().sym.empty()); // Would need to be copied 
+    assert(curev().sym.empty()); // Can't happen 
+    prefix.pop_back();
+    --prefix_idx;
+    ++curev().size;
+    assert(int(threads[curev().iid.get_pid()].event_indices.back()) == prefix_idx + 1);
+    threads[curev().iid.get_pid()].event_indices.back() = prefix_idx;
+  }
+
+  auto p = curev().iid.get_pid();
+  seen_effect = false;
+ 	++prefix_idx;
+  assert(prefix_idx == int(prefix.size()));
+  threads[p].event_indices.push_back(prefix_idx);
+  prefix.emplace_back(IID<IPid>(IPid(p),threads[p].last_event_index()));
+  
+}
+
 bool CCVTraceBuilder::is_begin(unsigned i) const {
   const SymEv &e = prefix[i].sym;
   return e.kind == SymEv::BEGIN;
@@ -987,31 +1168,58 @@ bool CCVTraceBuilder::is_end(unsigned i) const {
 }
 
 void CCVTraceBuilder::beginTransaction(int tid) {
-  assert(tid > 0);
-	IPid pid = curev().iid.get_pid();
-  bool r = record_symbolic(SymEv::Begin(tid));
-	++transaction_idx;
-  assert(transaction_idx == int(transactions.size()));
-  threads[pid].transaction_indices.emplace_back(transaction_idx);
-  unsigned tidx = threads[pid].last_transaction_index();
-  Transaction t(pid,tid,tidx);
-  transactions.emplace_back(t);
-  if(!transactions.empty() && curev().iid.get_pid() == transactions.back().pid) 
-  	curev().tid = transactions.back().tid;
+  if(replay){
+    //nondeterminism_error("Hi----Its here");
+    assert(tid > 0);
+    IPid pid = curev().iid.get_pid();
+    bool r = record_symbolic(SymEv::Begin(tid));
+    ++transaction_idx;
+    threads[pid].transaction_indices.emplace_back(transaction_idx);
+    curev().may_conflict = true;
+    curev().tid = transactions[transaction_idx].tid;
+  }
+  else{
+    assert(tid > 0);
+  	IPid pid = curev().iid.get_pid();
+    bool r = record_symbolic(SymEv::Begin(tid));
+  	++transaction_idx;
+    assert(transaction_idx == int(transactions.size()));
+    threads[pid].transaction_indices.emplace_back(transaction_idx);
+    unsigned tidx = threads[pid].last_transaction_index();
+    Transaction t(pid,tid,tidx);
+    transactions.emplace_back(t);
+    if(!transactions.empty() && curev().iid.get_pid() == transactions.back().pid) 
+    	curev().tid = transactions.back().tid;
+    curev().may_conflict = true;
+  }
 }
 
 void CCVTraceBuilder::endTransaction(int tid) {
+  if(replay){
+    //nondeterminism_error("Hi----Its here");
+    curev().tid = tid;
+    bool r = record_symbolic(SymEv::End(tid));
+    curev().may_conflict = true;
+    return;
+  }
   assert(tid > 0);
   if(!transactions.empty() && curev().iid.get_pid() == transactions.back().pid){
-  	curev().tid = transactions.back().tid;
-    bool r = record_symbolic(SymEv::End(transactions.back().tid));
-    //temp += transactions.back().tid;
- }
+  	curev().tid = tid;
+    bool r = record_symbolic(SymEv::End(tid));
+    curev().may_conflict = true;
+  }
 }
 
-int CCVTraceBuilder:: performWrite(void *ptr, llvm::GenericValue val){
+int CCVTraceBuilder:: performWrite(void *ptr, llvm::GenericValue val , int typ){
+  if(!typ)
+    return -1;
+  bool r = record_symbolic(SymEv::CCVStore(transactions[transaction_idx].tid));
+  if(!transactions.empty() && curev().iid.get_pid() == transactions[transaction_idx].pid) 
+    curev().tid = transactions[transaction_idx].tid;
+  curev().may_conflict = true;
+
 	IPid pid = curev().iid.get_pid();
-	Transaction &t = transactions.back();
+	Transaction &t = transactions[transaction_idx];
 	if(!transactions.empty() && curev().iid.get_pid() == t.pid){
 		if(t.global_variables.count(ptr)){
 			t.global_variables[ptr] = val;
@@ -1022,70 +1230,136 @@ int CCVTraceBuilder:: performWrite(void *ptr, llvm::GenericValue val){
 		return transaction_idx;
 	}
 	else
-		return 0;
+		return -1;
 }
 
 
-int CCVTraceBuilder::performRead(void *ptr ,llvm::Type *typ){
-  Timing::Guard timing_guard(try_read_from_context);
+int CCVTraceBuilder::performRead(void *ptr , int typ){
 
-	int tid = curev().tid;
+  if(!typ)
+    return -1;
+  bool r = record_symbolic(SymEv::CCVLoad(transactions.back().tid));
+  if(!transactions.empty() && curev().iid.get_pid() == transactions.back().pid) 
+    curev().tid = transactions[transaction_idx].tid;
+  curev().may_conflict = true;
+  //TODO: Replay. Add current_reads part
+  if(replay){
+    int tid = curev().tid;
+    int read_from = *(curev().read_from);
+    assert(read_from < transaction_idx);
+    if(!transactions[transaction_idx].current_reads.count(ptr)){
+      transactions[transaction_idx].current_reads.insert({ptr,read_from});
+    }
+    return read_from;
+  }
 
-  Transaction &cur_transaction = transactions.back();
-  // TODO:Local read
-    if(!transactions.empty() && curev().iid.get_pid() == cur_transaction.pid){
-      if(cur_transaction.global_variables.count(ptr)){
-        return transaction_idx;
+  if(prefix_idx < replay_prefix.size() && curev().sym.is_compatible_with(replay_prefix[prefix_idx].sym)) {
+    Event &e = replay_prefix[prefix_idx];
+
+    curev().read_from = *e.read_from;
+    if(!e.can_read_from.empty())
+      curev().can_read_from = std::move(e.can_read_from);
+    if(!e.possible_reads.empty())
+      curev().possible_reads = std::move(e.possible_reads);
+    if(!e.happens_before.empty())
+      curev().happens_before = std::move(e.happens_before);
+
+    Tid tid = replay_prefix[prefix_idx].tid;
+    for( int i = 0 ; i < tid ; i++){
+      Transaction &t = replay_transactions[i];
+      if(!t.modification_order.empty()){
+        transactions[i].modification_order = std::move(t.modification_order);
       }
     }
-    // If a read on this variable is already present
-    if(cur_transaction.current_reads.count(ptr)){
-      return cur_transaction.current_reads[ptr];
+    return *replay_prefix[prefix_idx].read_from;
+  }
+
+  // Not Replay
+	int tid = curev().tid;
+  Transaction &cur_transaction = transactions[transaction_idx];
+  //Local read
+  if(!transactions.empty() && curev().iid.get_pid() == cur_transaction.pid){
+    if(cur_transaction.global_variables.count(ptr)){
+      curev().localread = true;
+      curev().read_from = transaction_idx;
+      return transaction_idx;
     }
+  }
+    //If a read on this variable is already present
+  if(cur_transaction.current_reads.count(ptr)){
+    curev().read_from = cur_transaction.current_reads[ptr];
+    return cur_transaction.current_reads[ptr];
+  }
+  
+  // TODO: Reading from the current set of reads_from of the transaction
+
+
+  //Return 0, if no transaction has a write on this variable, i.e read from init
+  bool flag = false;
+  for(int i = 0; i < transactions.size() ; i++ ){
+    if(transactions[i].global_variables.count(ptr))
+      flag = true;
+  }
+  if(!flag){
+    curev().read_from = -1;
+    return -1;
+  }
 
   compute_vclocks(); // computes [po U rf]* and [po U rf U co]*
 
   std::vector<std::vector<unsigned>> writes_by_process(threads.size()); // mapping: [process -> transactions(W_ptr)]
-  std::vector<unsigned> happens_before;
+  std::set<unsigned> &happens_before = curev().happens_before;
   for (unsigned j = 0; j < transactions.size(); ++j) {
     if (has_store_on_var(ptr,j)){
       writes_by_process[transactions[j].get_pid()].push_back(j);
       if(transaction_happens_before(transactions[j],cur_transaction.above_clock)) {
-        happens_before.emplace_back(j);
+        happens_before.insert(j);
       }
     }
   }
   
   for (unsigned p = 0; p < threads.size(); ++p){
     const std::vector<unsigned> &writes = writes_by_process[p];
-
-    /*auto end = std::lower_bound(writes.begin(), writes.end(), transactions[transaction_idx].get_index(),
-                                    [this](unsigned w, int index) {
-                                      const IPid tpid = transactions[transaction_idx].get_pid();
-                                      return transacti4ons[w].above_clock[tpid] < index;
-                                    });
-    auto start = writes.begin();*/
-   
     for(auto j: writes){
+      bool flag = false;
       for(auto k: happens_before){
-        if( j == k || !transaction_happens_before(transactions[j],transactions[k].clock)) {
-          curev().can_read_from.emplace_back(j);
-          temp++;
+        if( j!= k && transaction_happens_before(transactions[j],transactions[k].clock)) {
+          flag = true;
+          break;
         }
       }
-      
+      if(!flag){
+        curev().can_read_from.emplace_back(j);
+        curev().possible_reads.insert({j,false});
+      } 
     }
   }
 
   if(!curev().can_read_from.empty()) {
     int reads_from = curev().can_read_from.back();
     curev().can_read_from.pop_back();
-    for(auto j : curev().can_read_from){
-      transactions[reads_from].modification_order.emplace_back(j);
-    }
-    cur_transaction.read_from.emplace_back(reads_from);
-    cur_transaction.current_reads.insert({ptr,reads_from});
+    // Currently reading from this transaction
+    curev().possible_reads[reads_from] = true; 
 
+    //TODO: Add co edge to transaction[reads_from] form t \in [po U rf] 
+    for(auto j : curev().possible_reads){
+      if(!j.second){
+        if(happens_before.count(j.first) != 0) {//Ensures that this write [hb] this read
+          transactions[reads_from].modification_order.emplace_back(j.first);
+        }
+      }
+    }
+    //SymEv sym_ev = curev().sym;
+    /*if(sym_ev.is_compatible_with(curev().sym))
+      temp++;*/
+    cur_transaction.read_from.emplace_back(reads_from);
+    if(!cur_transaction.current_reads.count(ptr)){
+      cur_transaction.current_reads.insert({ptr,reads_from});
+    }
+    //cur_transaction.current_reads_vector.emplace_back(std::make_pair(sym_ev,reads_from));
+    curev().read_from = reads_from;
+
+    tasks_created = tasks_created + curev().can_read_from.size();
     return reads_from;
   }
 
@@ -1094,10 +1368,10 @@ int CCVTraceBuilder::performRead(void *ptr ,llvm::Type *typ){
 uint64_t CCVTraceBuilder::tracecount(){
 	uint64_t t = 0;
 	int64_t value = 0;
-	/*for(unsigned i=0 ; i < prefix.size() ; ++i){
-		if(is_store(i) && prefix[i].tid > 0)
+	for(unsigned i=0 ; i < prefix.size() ; ++i){
+		if(is_begin(i))
 			t++;
-	}*/
+	}
 	t = temp;
 	return t;
 }

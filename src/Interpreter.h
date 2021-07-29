@@ -196,6 +196,7 @@ protected:
   int AtomicFunctionCall;
 
 	int transactions;
+  int end_transactions;
 	class Transaction{
   public: 
   	Transaction(int pid, int tid):pid(pid),tid(tid){};

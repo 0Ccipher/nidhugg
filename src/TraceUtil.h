@@ -71,4 +71,11 @@ private:
   std::map<std::string,unsigned> lookup;
 };
 
+class TIDSeqTraceBuilder {
+  public:
+    TIDSeqTrace build();
+    void push_from(int pid, int tid, int tindex, VClock<int> clk, std::vector<unsigned> reads);
+  private:
+    TIDSeqTrace vector;
+};
 #endif

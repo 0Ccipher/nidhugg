@@ -53,8 +53,8 @@ public:
 	virtual void beginTransaction(int tid) override;	
 		  virtual void endTransaction(int tid) override { return; };
 		  virtual void createNextEvent() override {return; };
-		  virtual int performWrite(void *ptr, llvm::GenericValue val) override { return 0;};
-   virtual int performRead(void *ptr,llvm::Type *typ) override {return 0;};
+		  virtual int performWrite(void *ptr, llvm::GenericValue val , int typ) override { return 0;};
+   virtual int performRead(void *ptr, int typ) override {return 0;};
 	
   virtual NODISCARD bool spawn() override;
   virtual NODISCARD bool store(const SymData &ml) override;

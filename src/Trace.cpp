@@ -36,10 +36,17 @@ Trace::~Trace(){
 IIDSeqTrace::IIDSeqTrace(const std::vector<IID<CPid> > &cmp,
                          SrcLocVector cmpmd,
                          const std::vector<Error*> &errors,
+                         TIDSeqTrace trns,
+                         bool blk)
+  : Trace(errors,blk), computation(cmp), computation_md(std::move(cmpmd)), trnsTrace(trns) {
+}
+
+IIDSeqTrace::IIDSeqTrace(const std::vector<IID<CPid> > &cmp,
+                         SrcLocVector cmpmd,
+                         const std::vector<Error*> &errors,
                          bool blk)
   : Trace(errors,blk), computation(cmp), computation_md(std::move(cmpmd)) {
 }
-
 IIDSeqTrace::~IIDSeqTrace(){
 }
 
@@ -58,6 +65,7 @@ std::string Trace::to_string(int _ind) const{
 std::string IIDSeqTrace::to_string(int _ind) const{
   std::string s;
   std::string ind;
+  int transaction_idx = -1;
   assert(_ind >= 0);
   while(_ind){
     ind += " ";
@@ -102,14 +110,51 @@ std::string IIDSeqTrace::to_string(int _ind) const{
     if(computation[i].get_pid().is_auxiliary()){
       s+=" UPDATE";
     }
+    std::string strns;
     {
       if(auto md = computation_md[i]){
         std::stringstream ss;
         ss << " " << TraceUtil::basename(md.file) << ":" << md.line;
-        ss << ": " << TraceUtil::get_src_line_verbatim(md);
+        strns = TraceUtil::get_src_line_verbatim(md);
+        if(strns.find("}") == 0){
+          ss << ": " << "End_Transaction (" << trnsTrace.transactions[transaction_idx].pid << " , ";
+          ss << trnsTrace.transactions[transaction_idx].tid << ") ";
+        }
+        else  
+          ss << ": " << TraceUtil::get_src_line_verbatim(md);
         s += ss.str();
       }
       s += "\n";
+      if( strns.find("__VERIFIER_atomic_") == 0){
+          std::stringstream ss;
+          std::stringstream ss1;
+          transaction_idx++;
+          ss1 << " Begin_Transaction (" << trnsTrace.transactions[transaction_idx].pid << " , ";
+          ss1 << trnsTrace.transactions[transaction_idx].tid << ") ";
+          s += iid_str;
+          s += ss1.str();
+          s += "\n";
+          ss << " Transactid ID : " << trnsTrace.transactions[transaction_idx].tid;
+          ss << "\t Vector Clock : " << trnsTrace.transactions[transaction_idx].clock.to_string();
+          s += iid_str;
+          s += ss.str();
+          s += "\n";
+          if(!trnsTrace.transactions[transaction_idx].read_from.empty()){
+            std::stringstream ss;
+            ss << " Reads From Transacton IDs [";
+            int j = 0;
+            const std::vector<unsigned> &reads = trnsTrace.transactions[transaction_idx].read_from;
+            for(; j < reads.size() - 1 ; ++j){
+              ss << " " << trnsTrace.transactions[reads[j]].tid << " ,";
+            }
+            ss << " " << trnsTrace.transactions[reads[j]].tid;
+            ss << " ]";
+            s += iid_str;
+            s += ss.str();
+            s += "\n";
+          }
+          
+        }
     }
     if(error_locs.count(i)){
       // Indentation

@@ -946,6 +946,13 @@ void Interpreter::visitReturnInst(ReturnInst &I) {
   Type *RetTy = Type::getVoidTy(I.getContext());
   GenericValue Result;
 
+  if(transactions > 0){
+    if(transactions == end_transactions+1){
+      TB.endTransaction(transactions);
+      TB.metadata(I.getMetadata("dbg"));
+      end_transactions++;
+    }
+  }
   // Save away the return value... (if we are not 'ret void')
   if (I.getNumOperands()) {
     RetTy  = I.getReturnValue()->getType();
@@ -1169,33 +1176,35 @@ void Interpreter::visitLoadInst(LoadInst &I) {
   GenericValue *Ptr = (GenericValue*)GVTOP(SRC);
   GenericValue Result;
 
-  Option<SymAddrSize> Ptr_sas = GetSymAddrSize(Ptr,I.getType());
+  /*Option<SymAddrSize> Ptr_sas = GetSymAddrSize(Ptr,I.getType());
   if (!Ptr_sas) return;
   if (!conf.c11 || I.isVolatile() || I.getOrdering() != llvm::AtomicOrdering::NotAtomic) {
     if (!TB.load(*Ptr_sas)) {
       abort();
       return;
     }
-  }
+  }*/
 
-  if(DryRun && DryRunMem.size()){
+  /*if(DryRun && DryRunMem.size()){
     DryRunLoadValueFromMemory(Result, Ptr, *Ptr_sas, I.getType());
     SetValue(&I, Result, SF);
     return;
-  }
+  }*/
+  int tid = -1;
 	if(0 <= AtomicFunctionCall && !transactions_vec.empty()){
-  auto tid = TB.performRead(Ptr,I.getType());
+    tid = TB.performRead(Ptr,1);
+  }
   //LoadValueFromMemory(Result, Ptr, I.getType());
   //int tid = 1;
   if(tid > -1){
-	if(!transactions_vec.empty()){
-	  Transaction &t = transactions_vec[tid];
-		if(t.global_variables.count(Ptr)){
+	  if(!transactions_vec.empty()){
+	     Transaction &t = transactions_vec[tid];
+		  if(t.global_variables.count(Ptr)){
 			//LoadValueFromMemory(Result, (GenericValue*)GVTOP(t.global_variables[Ptr]), I.getType());
-			SetValue(&I,t.global_variables[Ptr], SF);
-		}
-	}}
-	}
+			   SetValue(&I,t.global_variables[Ptr], SF);
+		  }
+	  }
+  }
 	else{
 			LoadValueFromMemory(Result, Ptr, I.getType());
   		SetValue(&I, Result, SF);
@@ -1208,7 +1217,8 @@ void Interpreter::visitStoreInst(StoreInst &I) {
   ExecutionContext &SF = ECStack()->back();
   GenericValue Val = getOperandValue(I.getOperand(0), SF);
   GenericValue *Ptr = (GenericValue *)GVTOP(getOperandValue(I.getPointerOperand(), SF));
-  Option<SymAddrSize> Ptr_sas = GetSymAddrSize(Ptr,I.getOperand(0)->getType());
+  
+  /*Option<SymAddrSize> Ptr_sas = GetSymAddrSize(Ptr,I.getOperand(0)->getType());
   if (!Ptr_sas) return;
 
   SymData sd = GetSymData(*Ptr_sas, I.getOperand(0)->getType(), Val);
@@ -1217,18 +1227,19 @@ void Interpreter::visitStoreInst(StoreInst &I) {
       abort();
       return;
     }
-  }
+  }*/
 
-  if(DryRun){
+  /*if(DryRun){
     DryRunMem.emplace_back(std::move(sd));
     return;
-  }
-
+  }*/
+  int tid = -1;
 	if(0 <= AtomicFunctionCall && !transactions_vec.empty()){
-  int tid = TB.performWrite(Ptr, Val);
+    tid = TB.performWrite(Ptr, Val , 1);
+  }
   //int tid = 1;
   if(tid > -1){
-	if(!transactions_vec.empty()){
+	  assert(!transactions_vec.empty());
 		Transaction &t = transactions_vec.back();
 		if(t.global_variables.count(Ptr)){
 			t.global_variables[Ptr] = Val;
@@ -1236,7 +1247,6 @@ void Interpreter::visitStoreInst(StoreInst &I) {
 		else{
 			t.global_variables.insert({Ptr,Val});
 		}
-	}}
 	}
 	else{
 	  StoreValueToMemory(Val, Ptr, I.getOperand(0)->getType());
@@ -3288,8 +3298,7 @@ bool Interpreter::isPthreadMutexLock(Instruction &I, GenericValue **ptr){
     return true;
   }
   AnyCallInst CI = isCallOrInvoke(I);
-  if(!CI) return false;
-  Function *F = CI.getCalledFunction();
+  if(!CI) return false;  Function *F = CI.getCalledFunction();
   if(!F || F->getName() != "pthread_mutex_lock") return false;
   *ptr = (GenericValue*)GVTOP(getOperandValue(*CI.arg_begin(),ECStack()->back()));
   return true;
@@ -3392,7 +3401,7 @@ bool Interpreter::ValidateFunctionPointer(Function *F) {
   return true;
 }
 
-void Interpreter::run() {
+void Interpreter::run() { 
   int aux;
   bool rerun = false;
   while(rerun || TB.schedule(&CurrentThread,&aux,&CurrentAlt,&DryRun)){
@@ -3446,22 +3455,25 @@ void Interpreter::run() {
     /* Execute */
     visit(I);
 
-    /* Atomic function? */
-    if(0 <= AtomicFunctionCall){
-      /* We have entered an atomic function.
-       * Keep executing until we exit it.
-       */
-      while(AtomicFunctionCall < int(ECStack()->size())){
-        ExecutionContext &SF = ECStack()->back();  // Current stack frame
-        Instruction &I = *SF.CurInst++;         // Increment before execute
+      /* Atomic function? */
+      if(0 <= AtomicFunctionCall){
+        /* We have entered an atomic function.
+         * Keep executing until we exit it.
+         */
+        while(AtomicFunctionCall < int(ECStack()->size())){
+          
 
-				TB.createNextEvent();  // get next even TODO
-        //TB.metadata(I.getMetadata("dbg"));
-        visit(I);
+          ExecutionContext &SF = ECStack()->back();  // Current stack frame
+          Instruction &I = *SF.CurInst++;         // Increment before execute
+
+          TB.createNextEvent();  // get next event
+          TB.metadata(I.getMetadata("dbg"));
+          
+          visit(I);
+        }
+        AtomicFunctionCall = -1;
       }
-      AtomicFunctionCall = -1;
-    	TB.endTransaction(transactions); // end of the transaction TODO
-    }
+    
 
     if(ECStack()->empty()){ // The thread has terminated
       if(CurrentThread == 0 && AtExitHandlers.size()){
@@ -3483,6 +3495,7 @@ void Interpreter::run() {
 	}
   transactions_vec.clear();
   transactions = 0;
+  end_transactions = 0;
   transaction_idx = -1;
   clearAllStacks();
 }

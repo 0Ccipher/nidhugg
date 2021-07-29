@@ -271,8 +271,8 @@ public:
   virtual void beginTransaction(int tid) = 0;
   virtual void endTransaction(int tid) = 0;
   virtual void createNextEvent() = 0;
-  virtual int performWrite(void *ptr, llvm::GenericValue val) = 0;
-  virtual int performRead(void *ptr, llvm::Type *typ) = 0;
+  virtual int performWrite(void *ptr, llvm::GenericValue val, int typ) = 0;
+  virtual int performRead(void *ptr, int typ) = 0;
 };
 
 #endif

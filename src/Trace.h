@@ -29,6 +29,7 @@
 
 #include "CPid.h"
 #include "IID.h"
+#include  "VClock.h"
 
 #include <string>
 #include <vector>
@@ -194,6 +195,22 @@ protected:
   bool blocked;
 };
 
+class TIDSeqTrace{
+  public: 
+    struct Transaction{
+      Transaction(int pid, int tid, unsigned tindex):pid(pid), tid(tid) , tindex(tindex) {};
+      int pid;
+      int tid;
+      unsigned tindex;
+
+      VClock<int> clock;    
+      std::vector<unsigned> read_from;
+    };
+  
+  std::vector<Transaction> transactions;
+  int trns_idx = -1;
+  friend class TIDSeqTraceBuilder;
+  };
 /* This class represents traces that are expressed as sequences of
  * IIDs.
  */
@@ -213,6 +230,12 @@ public:
               SrcLocVector computation_md,
               const std::vector<Error*> &errors,
               bool blocked = false);
+
+  IIDSeqTrace(const std::vector<IID<CPid> > &computation,
+              SrcLocVector computation_md,
+              const std::vector<Error*> &errors,
+              TIDSeqTrace trns,
+              bool blocked = false);
   virtual ~IIDSeqTrace();
   IIDSeqTrace(const IIDSeqTrace&) = delete;
   IIDSeqTrace &operator=(const IIDSeqTrace&) = delete;
@@ -226,6 +249,8 @@ public:
 protected:
   std::vector<IID<CPid> > computation;
   SrcLocVector computation_md;
+
+  TIDSeqTrace trnsTrace;
 };
 
 

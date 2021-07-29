@@ -60,8 +60,8 @@ public:
 	virtual void beginTransaction(int tid) override;	
 	  virtual void endTransaction(int tid) override { return; };
 	    virtual void createNextEvent() override {return;};
-	    virtual int performWrite(void *ptr, llvm::GenericValue val) override { return 0;};
-  virtual int performRead(void *ptr,llvm::Type *typ) override {return 0;};
+	    virtual int performWrite(void *ptr, llvm::GenericValue val, int typ) override { return 0;};
+  virtual int performRead(void *ptr, int typ) override {return 0;};
 	  
   virtual void debug_print() const override;
   virtual bool cond_branch(bool cnd) override { return true; }

@@ -111,6 +111,7 @@ Interpreter::Interpreter(Module *M, TSOPSOTraceBuilder &TB,
   CurrentThread = 0;
   AtomicFunctionCall = -1;
   transactions = 0;
+  end_transactions = 0;
   memset(&ExitValue.Untyped, 0, sizeof(ExitValue.Untyped));
 #ifdef LLVM_EXECUTIONENGINE_DATALAYOUT_PTR
   setDataLayout(&TD);

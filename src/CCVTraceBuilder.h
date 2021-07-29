@@ -26,9 +26,13 @@
 #include "WakeupTrees.h"
 #include "Option.h"
 #include "PrefixHeuristic.h"
+//#include "CCVSchedules.h"
 
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
+#include <set>
+
 #include <boost/container/flat_map.hpp>
 #include <llvm/ExecutionEngine/GenericValue.h>
 #include <llvm/IR/Type.h>
@@ -59,8 +63,8 @@ public:
 		virtual void beginTransaction(int tid) override;	
 			 virtual void endTransaction(int tid) override;
 			 virtual void createNextEvent() override;
-			 virtual int performWrite(void *ptr, llvm::GenericValue val) override;
-   virtual int performRead(void *ptr,llvm::Type *typ) override;
+			 virtual int performWrite(void *ptr, llvm::GenericValue val , int typ) override;
+   virtual int performRead(void *ptr, int typ) override;
 			  
   virtual void debug_print() const override;
   virtual bool cond_branch(bool cnd) override { return true; }
@@ -92,10 +96,9 @@ public:
   virtual NODISCARD bool register_alternatives(int alt_count) override;
   virtual long double estimate_trace_count() const override;
 
-  /* Amount of siblings found during compute_prefixes. */
-  int tasks_created;
 
   uint64_t tracecount();
+  int total_tasks() const { return tasks_created;};
 
 protected:
   /* An identifier for a thread. An index into this->threads.
@@ -253,6 +256,7 @@ protected:
     
     std::unordered_map<const void *, llvm::GenericValue> global_variables;
     std::unordered_map<const void *, Tid> current_reads;
+    //std::vector<std::pair<SymEv, Tid>> current_reads_vector; //SymEv
 
     //
 
@@ -280,14 +284,18 @@ protected:
   /* Information about a (short) sequence of consecutive events by the
    * same thread. At most one event in the sequence may have conflicts
    * with other events, and if the sequence has a conflicting event,
-   * it must be the first event in the sequence.
+   * it must be th
+#include "VClock.h"
+#include "SymEv.h"
+#include "WakeupTrees.h"
+#include "Option.h"
+#include "PrefixHeuristic.h"e first event in the sequence.
    */
   class Event{
   public:
     Event(const IID<IPid> &iid, int alt = 0, SymEv sym = {})
-      : alt(0), size(1), pinned(false),
-        iid(iid), origin_iid(iid), md(0), clock(), may_conflict(false),
-        sym(std::move(sym)), sleep_branch_trace_count(0), tid(0){};
+      : alt(0), size(1),iid(iid), pinned(false), origin_iid(iid), md(0), may_conflict(false),
+        sym(std::move(sym)), tid(0), sleep_branch_trace_count(0) {};
     /* Some instructions may execute in several alternative ways
      * nondeterministically. (E.g. malloc may succeed or fail
      * nondeterministically if Configuration::malloy_may_fail is set.)
@@ -326,15 +334,18 @@ protected:
     Option<int> read_from;
     
     //TODO
+    /* Tid of Transaction */
     Tid tid;
     
+
     std::vector<Tid> can_read_from;
-    
+    std::map<int,bool> possible_reads; 
+    std::set<unsigned> happens_before; 
     std::vector<std::vector<Event>> schedules;
     
     bool localread = false;
     
-    bool Swappable = true;
+    bool swappable = true;
     /* Symbolic representation of the globally visible operation of this event.
      * Empty iff !may_conflict
      */
@@ -345,7 +356,7 @@ protected:
      * explored. sleep_branch_trace_count is the total number of such
      * explored traces.
      */
-    int sleep_branch_trace_count;
+   int sleep_branch_trace_count;
     
   };
 
@@ -418,7 +429,6 @@ protected:
    */
   Option<unsigned> try_find_process_event(IPid pid, int index) const;
   unsigned find_process_event(IPid pid, int index) const;
-
   /* Pretty-prints the iid of prefix[pos]. */
   std::string iid_string(std::size_t pos) const;
   /* Pretty-prints the iid of event. */
@@ -489,10 +499,12 @@ protected:
   SymData get_data(int idx, const SymAddrSize &addr) const;
   
   //TODO
-  std::vector<Event> obs;
-  std::vector<Transaction> obst;
-  int cur_read =-1;
-  int cur_transaction = -1;
+  //CCVSchedules ccvschedules(-1, -1);
+
+  int tasks_created = 0;
+  std::vector<Event> replay_prefix;
+  std::vector<Transaction> replay_transactions;
+  
   unsigned find_process_transaction(IPid pid, int index) const;
   bool is_begin(unsigned idx) const;
   bool is_end(unsigned idx) const;
