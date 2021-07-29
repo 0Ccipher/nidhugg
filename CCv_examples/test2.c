@@ -7,11 +7,11 @@ int x=0,y=0;
 void __VERIFIER_atomic_t1(){	
 	y = 1;
 	x = 1;
-	//printf("y1 = %d: ",y);
+	printf("y1 = %d: ",y);
 }
 
 void __VERIFIER_atomic_t2(){
-	//printf("x : %d", x);
+	printf("x : %d", x);
   x = 2;
  }
 
