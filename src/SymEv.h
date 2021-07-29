@@ -63,7 +63,9 @@ struct SymEv {
     UNOBS_STORE,
     
     BEGIN,
-    END
+    END,
+    LOAD_CCV,
+    STORE_CCV
   } kind;
   union arg {
   public:
@@ -110,6 +112,8 @@ struct SymEv {
   static SymEv Join(int proc) { return {JOIN, proc}; }
   static SymEv Begin(int tid) {return {BEGIN, tid}; }
   static SymEv End(int tid) {return {END, tid}; }
+  static SymEv CCVLoad(int tid) {return {LOAD_CCV, tid}; }
+  static SymEv CCVStore(int tid) {return {STORE_CCV, tid}; }
 
   static SymEv UnobsStore(SymData addr) {
     return {UNOBS_STORE, std::move(addr)};

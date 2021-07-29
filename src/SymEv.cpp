@@ -42,6 +42,9 @@ bool SymEv::is_compatible_with(SymEv other) const {
   case NONDET:
     if (arg.num != other.arg.num) return false;
     break;
+  case BEGIN : case END : case LOAD_CCV : case STORE_CCV:
+    if(arg.num != other.arg.num)  return false;
+    break;
   case FULLMEM:
   case NONE:
     break;
@@ -96,6 +99,11 @@ std::string SymEv::to_string(std::function<std::string(int)> pid_str) const {
     case SPAWN: return "Spawn(" + pid_str(arg.num) + ")";
     case JOIN:  return "Join("  + pid_str(arg.num) + ")";
 
+    case BEGIN : return "BEGIN(" + pid_str(arg.num) + ")";
+    case END : return "END(" + pid_str(arg.num) + ")";
+    case LOAD_CCV : return "LOAD_CCV(" + pid_str(arg.num) + ")";
+    case STORE_CCV:  return "STORE_CCV(" + pid_str(arg.num) + ")";
+
     case UNOBS_STORE: return "UnobsStore(" + arg.addr.to_string(pid_str)
         + "," + block_to_string(_written, arg.addr.size) + ")";
 
@@ -126,6 +134,7 @@ bool SymEv::has_addr() const {
   case NONE:
   case FULLMEM: case NONDET:
   case SPAWN: case JOIN:
+  case BEGIN : case END : case LOAD_CCV : case STORE_CCV:
     return false;
   }
   abort();
@@ -135,6 +144,7 @@ bool SymEv::has_num() const {
   switch(kind) {
   case SPAWN: case JOIN:
   case NONDET:
+  case BEGIN : case END : case LOAD_CCV : case STORE_CCV:
     return true;
   case NONE:
   case C_WAIT: case C_AWAKE:
@@ -164,6 +174,7 @@ bool SymEv::has_data() const {
   case M_INIT: case M_LOCK: case M_UNLOCK: case M_DELETE:
   case M_TRYLOCK: case M_TRYLOCK_FAIL:
   case C_INIT: case C_SIGNAL: case C_BRDCST: case C_DELETE:
+  case BEGIN : case END : case LOAD_CCV : case STORE_CCV:
     return false;
   }
   abort();
@@ -184,6 +195,7 @@ bool SymEv::has_expected() const {
   case M_TRYLOCK: case M_TRYLOCK_FAIL:
   case C_INIT: case C_SIGNAL: case C_BRDCST: case C_DELETE:
   case RMW:
+  case BEGIN : case END : case LOAD_CCV : case STORE_CCV:
     return false;
   }
   abort();
