@@ -293,8 +293,8 @@ bool CCVTraceBuilder::reset(){
     new_prefix.back().tid = e.tid;
   }
   //Create the updated prefix
-  replay_prefix = std::move(new_prefix);
-  //prefix = std::move(new_prefix);
+  //replay_prefix = std::move(new_prefix);
+  prefix = std::move(new_prefix);
 
   //Create updated transactions
   for(int i=0 ; i < transactions.size() ; i++){
@@ -316,15 +316,19 @@ bool CCVTraceBuilder::reset(){
     new_transactions.emplace_back(tr);
     if(!t.modification_order.empty())
       new_transactions.back().modification_order = std::move(t.modification_order);
+    if(!t.read_from.empty())
+      new_transactions.back().read_from = std::move(t.read_from);
+    if(!t.happens_after.empty())
+      new_transactions.back().read_from = std::move(t.happens_after);
     //for(auto j: new_transactions.back().modification_order)
       //temp ++;
   }
   
-  replay_transactions = std::move(new_transactions);
-  //transactions = std::move(new_transactions);
+  //replay_transactions = std::move(new_transactions);
+  transactions = std::move(new_transactions);
 
-  prefix.clear();
-  transactions.clear();
+  //prefix.clear();
+  //transactions.clear();
   transaction_idx = -1;
   prefix_idx = -1;
 
@@ -1256,6 +1260,8 @@ int CCVTraceBuilder::performRead(void *ptr , int typ){
   if(prefix_idx < replay_prefix.size() && curev().sym.is_compatible_with(replay_prefix[prefix_idx].sym)) {
     Event &e = replay_prefix[prefix_idx];
 
+    temp++;
+
     curev().read_from = *e.read_from;
     if(!e.can_read_from.empty())
       curev().can_read_from = std::move(e.can_read_from);
@@ -1269,6 +1275,12 @@ int CCVTraceBuilder::performRead(void *ptr , int typ){
       Transaction &t = replay_transactions[i];
       if(!t.modification_order.empty()){
         transactions[i].modification_order = std::move(t.modification_order);
+      }
+      if(!t.read_from.empty()){
+        transactions[i].read_from = std::move(t.read_from);
+      }
+      if(!t.happens_after.empty()) {
+        transactions[i].happens_after = std::move(t.happens_after);
       }
     }
     return *replay_prefix[prefix_idx].read_from;
