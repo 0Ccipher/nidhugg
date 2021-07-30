@@ -280,7 +280,7 @@ protected:
   //TODO
   std::vector<Transaction> transactions;
   int transaction_idx;
-	int temp = 40;
+	
   /* Information about a (short) sequence of consecutive events by the
    * same thread. At most one event in the sequence may have conflicts
    * with other events, and if the sequence has a conflicting event,
@@ -502,6 +502,7 @@ protected:
   //CCVSchedules ccvschedules(-1, -1);
 
   int tasks_created = 0;
+  int temp = 0;
   std::vector<Event> replay_prefix;
   std::vector<Transaction> replay_transactions;
   

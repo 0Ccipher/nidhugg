@@ -404,7 +404,7 @@ DPORDriver::Result DPORDriver::run_ccv() {
 
   uint64_t computation_count = 0;
   long double estimate = 1;
-  int tasks_left = 3;
+  int tasks_left = 1;
 
   do{
     if(conf.print_progress){
@@ -416,7 +416,7 @@ DPORDriver::Result DPORDriver::run_ccv() {
     Trace *t= this->run_once(TB, mod.get(), assume_blocked);
 
     tasks_left--;
-    //tasks_left += TB.total_tasks();
+    tasks_left += TB.total_tasks();
     //TB.reset();
     
     

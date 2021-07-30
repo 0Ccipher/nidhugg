@@ -320,6 +320,8 @@ bool CCVTraceBuilder::reset(){
       new_transactions.back().read_from = std::move(t.read_from);
     if(!t.happens_after.empty())
       new_transactions.back().read_from = std::move(t.happens_after);
+    new_transactions.back().clock = t.clock;
+    new_transactions.back().above_clock = t.above_clock;
     //for(auto j: new_transactions.back().modification_order)
       //temp ++;
   }
@@ -332,10 +334,10 @@ bool CCVTraceBuilder::reset(){
   transaction_idx = -1;
   prefix_idx = -1;
 
-  //replay = true;
-  replay = false; 
-  //replay_point = cur_events+1;
-  replay_point = 0;
+  replay = true;
+  //replay = false; 
+  replay_point = cur_events+1;
+  //replay_point = 0;
   tasks_created = 0;
 
 
@@ -1242,8 +1244,8 @@ int CCVTraceBuilder::performRead(void *ptr , int typ){
 
   if(!typ)
     return -1;
-  bool r = record_symbolic(SymEv::CCVLoad(transactions.back().tid));
-  if(!transactions.empty() && curev().iid.get_pid() == transactions.back().pid) 
+  bool r = record_symbolic(SymEv::CCVLoad(transactions[transaction_idx].tid));
+  if(!transactions.empty() && curev().iid.get_pid() == transactions[transaction_idx].pid) 
     curev().tid = transactions[transaction_idx].tid;
   curev().may_conflict = true;
   //TODO: Replay. Add current_reads part
@@ -1257,7 +1259,7 @@ int CCVTraceBuilder::performRead(void *ptr , int typ){
     return read_from;
   }
 
-  if(prefix_idx < replay_prefix.size() && curev().sym.is_compatible_with(replay_prefix[prefix_idx].sym)) {
+  /*if(prefix_idx < replay_prefix.size() && curev().sym.is_compatible_with(replay_prefix[prefix_idx].sym)) {
     Event &e = replay_prefix[prefix_idx];
 
     temp++;
@@ -1284,7 +1286,7 @@ int CCVTraceBuilder::performRead(void *ptr , int typ){
       }
     }
     return *replay_prefix[prefix_idx].read_from;
-  }
+  }*/
 
   // Not Replay
 	int tid = curev().tid;
@@ -1372,6 +1374,7 @@ int CCVTraceBuilder::performRead(void *ptr , int typ){
     curev().read_from = reads_from;
 
     tasks_created = tasks_created + curev().can_read_from.size();
+    temp += curev().can_read_from.size();
     return reads_from;
   }
 
@@ -1384,6 +1387,6 @@ uint64_t CCVTraceBuilder::tracecount(){
 		if(is_begin(i))
 			t++;
 	}
-	t = temp;
+	t = temp+1;
 	return t;
 }
