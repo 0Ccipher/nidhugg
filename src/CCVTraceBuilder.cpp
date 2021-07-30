@@ -225,10 +225,6 @@ bool CCVTraceBuilder::reset(){
       /*: Update old read's modification order i.e. transaction[last_read_from], create modification order for new read_from 
       , i.e transaction[reads_from] */
       std::set<unsigned> &happens_before = prefix[i].happens_before;
-      //std::map<int,bool>::reverse_iterator it;
-      // Remove(Undo) the co edges 
-      //for(it = prefix[i].possible_reads.rbegin(); it != prefix[i].possible_reads.rend() ; it++){
-        //if(!(it->second)){
         for(auto j : prefix[i].possible_reads){
           if(!j.second){
             if(happens_before.count(j.first) != 0) { //Ensures that this write [hb] this read
@@ -244,25 +240,25 @@ bool CCVTraceBuilder::reset(){
       /*Allow to read from the nexet available source*/
       {
         int reads_from = prefix[i].can_read_from.back();
-        prefix[i].can_read_from.pop_back();
-        prefix[i].possible_reads[reads_from] = true;
+        if(reads_from == -1){
+          prefix[i].can_read_from.pop_back();
+          transactions[tidx].read_from.clear();
+        }
+        else {
+          prefix[i].can_read_from.pop_back();
+          prefix[i].possible_reads[reads_from] = true;
 
-        for(auto j : prefix[i].possible_reads){
-          if(!j.second){
-            if(happens_before.count(j.first) != 0) { //Ensures that this write [hb] this read
-              transactions[reads_from].modification_order.emplace_back(j.first);
+          for(auto j : prefix[i].possible_reads){
+            if(!j.second){
+              if(happens_before.count(j.first) != 0) { //Ensures that this write [hb] this read
+                transactions[reads_from].modification_order.emplace_back(j.first);
+              }
             }
           }
         }
 
         transactions[tidx].read_from.emplace_back(reads_from);
         prefix[i].read_from = reads_from;
-      }
-      /* Remove the current read from the transactions if it's the last write source*/
-      {
-        /*if(prefix[i].can_read_from.empty()){
-          transactions[tidx].current_reads_vector.pop_back();
-        }*/
       }
       break;
     }
@@ -301,11 +297,6 @@ bool CCVTraceBuilder::reset(){
     transactions[i].global_variables.clear();
     transactions[i].current_reads.clear();
   }
-  /*for(int i =0 ; i < replay_transactions.size() ; i++){
-    replay_transactions[i].global_variables.clear();
-    replay_transactions[i].current_reads.clear();
-  }*/
-
   std::vector<Transaction> new_transactions;
   for(unsigned i = 0 ; i < tidx+1 ; i++){
     Transaction &t = transactions[i];
@@ -1197,6 +1188,8 @@ void CCVTraceBuilder::beginTransaction(int tid) {
     if(!transactions.empty() && curev().iid.get_pid() == transactions.back().pid) 
     	curev().tid = transactions.back().tid;
     curev().may_conflict = true;
+
+    compute_above_clock(transaction_idx);
   }
 }
 
@@ -1259,35 +1252,6 @@ int CCVTraceBuilder::performRead(void *ptr , int typ){
     return read_from;
   }
 
-  /*if(prefix_idx < replay_prefix.size() && curev().sym.is_compatible_with(replay_prefix[prefix_idx].sym)) {
-    Event &e = replay_prefix[prefix_idx];
-
-    temp++;
-
-    curev().read_from = *e.read_from;
-    if(!e.can_read_from.empty())
-      curev().can_read_from = std::move(e.can_read_from);
-    if(!e.possible_reads.empty())
-      curev().possible_reads = std::move(e.possible_reads);
-    if(!e.happens_before.empty())
-      curev().happens_before = std::move(e.happens_before);
-
-    Tid tid = replay_prefix[prefix_idx].tid;
-    for( int i = 0 ; i < tid ; i++){
-      Transaction &t = replay_transactions[i];
-      if(!t.modification_order.empty()){
-        transactions[i].modification_order = std::move(t.modification_order);
-      }
-      if(!t.read_from.empty()){
-        transactions[i].read_from = std::move(t.read_from);
-      }
-      if(!t.happens_after.empty()) {
-        transactions[i].happens_after = std::move(t.happens_after);
-      }
-    }
-    return *replay_prefix[prefix_idx].read_from;
-  }*/
-
   // Not Replay
 	int tid = curev().tid;
   Transaction &cur_transaction = transactions[transaction_idx];
@@ -1305,10 +1269,7 @@ int CCVTraceBuilder::performRead(void *ptr , int typ){
     return cur_transaction.current_reads[ptr];
   }
   
-  // TODO: Reading from the current set of reads_from of the transaction
-
-
-  //Return 0, if no transaction has a write on this variable, i.e read from init
+  //Return -1, if no transaction has a write on this variable, i.e read from init
   bool flag = false;
   for(int i = 0; i < transactions.size() ; i++ ){
     if(transactions[i].global_variables.count(ptr))
@@ -1319,6 +1280,7 @@ int CCVTraceBuilder::performRead(void *ptr , int typ){
     return -1;
   }
 
+  // If possible, read from init.
   compute_vclocks(); // computes [po U rf]* and [po U rf U co]*
 
   std::vector<std::vector<unsigned>> writes_by_process(threads.size()); // mapping: [process -> transactions(W_ptr)]
@@ -1331,6 +1293,12 @@ int CCVTraceBuilder::performRead(void *ptr , int typ){
       }
     }
   }
+
+  // Check if, it can read from init.
+  if(happens_before.empty()){
+    curev().can_read_from.emplace_back(-1);
+  }
+
   
   for (unsigned p = 0; p < threads.size(); ++p){
     const std::vector<unsigned> &writes = writes_by_process[p];
