@@ -196,7 +196,7 @@ Trace *CCVTraceBuilder::get_trace() const{
   };
   for(unsigned i=0 ; i < transactions.size(); ++i) {
     cmp_trns.push_from(transactions[i].get_pid() , transactions[i].get_tid() , transactions[i].get_index(),
-                                                   transactions[i].clock , transactions[i].read_from);
+                                                   transactions[i].clock , transactions[i].read_from, transactions[i].modification_order);
   }
   for(unsigned i = 0; i < errors.size(); ++i){
     errs.push_back(errors[i]->clone());
@@ -250,7 +250,7 @@ bool CCVTraceBuilder::reset(){
 
           for(auto j : prefix[i].possible_reads){
             if(!j.second){
-              if(happens_before.count(j.first) != 0) { //Ensures that this write [hb] this read
+              if(happens_before.count(j.first) != 0) { //write [hb] this read
                 transactions[reads_from].modification_order.emplace_back(j.first);
               }
             }
@@ -305,8 +305,8 @@ bool CCVTraceBuilder::reset(){
     unsigned tindex = t.get_index();
     Transaction tr(pid,tid,tindex);
     new_transactions.emplace_back(tr);
-    if(!t.modification_order.empty())
-      new_transactions.back().modification_order = std::move(t.modification_order);
+    //if(!t.modification_order.empty())
+      //new_transactions.back().modification_order = std::move(t.modification_order);
     if(!t.read_from.empty())
       new_transactions.back().read_from = std::move(t.read_from);
     if(!t.happens_after.empty())
@@ -1237,6 +1237,7 @@ int CCVTraceBuilder::performRead(void *ptr , int typ){
 
   if(!typ)
     return -1;
+
   bool r = record_symbolic(SymEv::CCVLoad(transactions[transaction_idx].tid));
   if(!transactions.empty() && curev().iid.get_pid() == transactions[transaction_idx].pid) 
     curev().tid = transactions[transaction_idx].tid;
@@ -1249,6 +1250,17 @@ int CCVTraceBuilder::performRead(void *ptr , int typ){
     if(!transactions[transaction_idx].current_reads.count(ptr)){
       transactions[transaction_idx].current_reads.insert({ptr,read_from});
     }
+    if(read_from!= -1 && !curev().possible_reads.empty()){
+      //Add co edge to transaction[reads_from] form transactions \in [po U rf] this transaction
+      std::set<unsigned> &happens_before = curev().happens_before;
+      for(auto j : curev().possible_reads){
+        if(!j.second){
+          if(happens_before.count(j.first) != 0) {//Write [hb] this read
+            transactions[read_from].modification_order.emplace_back(j.first);
+          }
+        }
+      }
+    }
     return read_from;
   }
 
@@ -1259,25 +1271,29 @@ int CCVTraceBuilder::performRead(void *ptr , int typ){
   if(!transactions.empty() && curev().iid.get_pid() == cur_transaction.pid){
     if(cur_transaction.global_variables.count(ptr)){
       curev().localread = true;
+      curev().swappable = false;
       curev().read_from = transaction_idx;
       return transaction_idx;
     }
   }
     //If a read on this variable is already present
   if(cur_transaction.current_reads.count(ptr)){
+    curev().swappable = false;
     curev().read_from = cur_transaction.current_reads[ptr];
     return cur_transaction.current_reads[ptr];
   }
   
   //Return -1, if no transaction has a write on this variable, i.e read from init
-  bool flag = false;
-  for(int i = 0; i < transactions.size() ; i++ ){
-    if(transactions[i].global_variables.count(ptr))
-      flag = true;
-  }
-  if(!flag){
-    curev().read_from = -1;
-    return -1;
+  {
+    bool flag = false;
+    for(int i = 0; i < transactions.size() ; i++ ){
+      if(transactions[i].global_variables.count(ptr))
+        flag = true;
+    }
+    if(!flag){
+      curev().read_from = -1;
+      return -1;
+    }
   }
 
   // If possible, read from init.
@@ -1299,7 +1315,6 @@ int CCVTraceBuilder::performRead(void *ptr , int typ){
     curev().can_read_from.emplace_back(-1);
   }
 
-  
   for (unsigned p = 0; p < threads.size(); ++p){
     const std::vector<unsigned> &writes = writes_by_process[p];
     for(auto j: writes){
@@ -1345,7 +1360,8 @@ int CCVTraceBuilder::performRead(void *ptr , int typ){
     temp += curev().can_read_from.size();
     return reads_from;
   }
-
+  
+  return -1;
 }
 
 uint64_t CCVTraceBuilder::tracecount(){

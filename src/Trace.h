@@ -205,6 +205,7 @@ class TIDSeqTrace{
 
       VClock<int> clock;    
       std::vector<unsigned> read_from;
+      std::vector<unsigned> modification_order;
     };
   
   std::vector<Transaction> transactions;

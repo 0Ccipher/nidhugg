@@ -153,6 +153,20 @@ std::string IIDSeqTrace::to_string(int _ind) const{
             s += ss.str();
             s += "\n";
           }
+          if(!trnsTrace.transactions[transaction_idx].modification_order.empty()){
+            std::stringstream ss;
+            ss << " Modification Order [";
+            int j = 0;
+            const std::vector<unsigned> &modification_orders = trnsTrace.transactions[transaction_idx].modification_order;
+            for(; j < modification_orders.size() - 1 ; ++j){
+              ss << " " << trnsTrace.transactions[modification_orders[j]].tid << " ,";
+            }
+            ss << " " << trnsTrace.transactions[modification_orders[j]].tid;
+            ss << " ]";
+            s += iid_str;
+            s += ss.str();
+            s += "\n";
+          }
           
         }
     }

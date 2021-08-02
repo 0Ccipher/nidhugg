@@ -211,11 +211,12 @@ TIDSeqTrace TIDSeqTraceBuilder::build() {
   return ret;
 }
 
-void TIDSeqTraceBuilder::push_from(int pid, int tid, int tindex, VClock<int> clk, std::vector<unsigned> reads) {
+void TIDSeqTraceBuilder::push_from(int pid, int tid, int tindex, VClock<int> clk, std::vector<unsigned> reads, std::vector<unsigned> mo) {
   vector.transactions.emplace_back(pid, tid, tindex);
   vector.trns_idx++;
   vector.transactions[vector.trns_idx].clock = clk;
   vector.transactions[vector.trns_idx].read_from.resize(reads.size());
   vector.transactions[vector.trns_idx].read_from = reads;
+  vector.transactions[vector.trns_idx].modification_order = mo;
 }
 
