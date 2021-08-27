@@ -33,6 +33,7 @@
 
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 /* This abstract class describes an error that was detected in a
  * trace. Particular types of errors should be represented by classes
@@ -186,7 +187,7 @@ public:
   /* A multi-line, human-readable string representation of this
    * Trace. Indentation will be in multiples of ind spaces.
    */
-  virtual std::string to_string(int ind = 0) const;
+  virtual std::string to_string(int ind = 0);
   /* Was the exploration of this execution (sleep set) blocked? */
   virtual bool is_blocked() const { return blocked; };
   virtual void set_blocked(bool b = true) { blocked = b; };
@@ -204,11 +205,12 @@ class TIDSeqTrace{
       unsigned tindex;
 
       VClock<int> clock;    
-      std::vector<unsigned> read_from;
+      std::vector<int> read_from;
       std::vector<unsigned> modification_order;
     };
   
   std::vector<Transaction> transactions;
+  std::unordered_map<int , std::unordered_map<unsigned, bool>> del;
   int trns_idx = -1;
   friend class TIDSeqTraceBuilder;
   };
@@ -246,7 +248,7 @@ public:
   virtual const SrcLocVector &get_computation_metadata() const{
     return computation_md;
   };
-  virtual std::string to_string(int ind = 0) const;
+  virtual std::string to_string(int ind = 0);
 protected:
   std::vector<IID<CPid> > computation;
   SrcLocVector computation_md;

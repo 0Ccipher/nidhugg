@@ -50,7 +50,7 @@ IIDSeqTrace::IIDSeqTrace(const std::vector<IID<CPid> > &cmp,
 IIDSeqTrace::~IIDSeqTrace(){
 }
 
-std::string Trace::to_string(int _ind) const{
+std::string Trace::to_string(int _ind){
   if(errors.size()){
     std::string s = "Errors found:\n";
     for(Error *e : errors){
@@ -62,7 +62,7 @@ std::string Trace::to_string(int _ind) const{
   }
 }
 
-std::string IIDSeqTrace::to_string(int _ind) const{
+std::string IIDSeqTrace::to_string(int _ind) {
   std::string s;
   std::string ind;
   int transaction_idx = -1;
@@ -129,29 +129,49 @@ std::string IIDSeqTrace::to_string(int _ind) const{
           std::stringstream ss;
           std::stringstream ss1;
           transaction_idx++;
-          ss1 << " Begin_Transaction (" << trnsTrace.transactions[transaction_idx].pid << " , ";
-          ss1 << trnsTrace.transactions[transaction_idx].tid << ") ";
-          s += iid_str;
-          s += ss1.str();
-          s += "\n";
-          ss << " Transactid ID : " << trnsTrace.transactions[transaction_idx].tid;
-          ss << "\t Vector Clock : " << trnsTrace.transactions[transaction_idx].clock.to_string();
-          s += iid_str;
-          s += ss.str();
-          s += "\n";
+
+          int tpid = trnsTrace.transactions[transaction_idx].pid;
+          trnsTrace.del[tpid].insert({trnsTrace.transactions[transaction_idx].tid , true});
+          std::vector<int> delivery;
+
           if(!trnsTrace.transactions[transaction_idx].read_from.empty()){
             std::stringstream ss;
-            ss << " Reads From Transacton IDs [";
+            ss << " Reads From [";
             int j = 0;
-            const std::vector<unsigned> &reads = trnsTrace.transactions[transaction_idx].read_from;
-            for(; j < reads.size() - 1 ; ++j){
-              ss << " " << trnsTrace.transactions[reads[j]].tid << " ,";
+            const std::vector<int> &reads = trnsTrace.transactions[transaction_idx].read_from;
+            for(; j < reads.size() - 1 ; ++j) {
+              if(reads[j] == -1)
+                ss << " " << "init" << " ,";
+              else
+                ss << " " << trnsTrace.transactions[reads[j]].tid << " ,";
+              if(reads[j]!= -1 && !trnsTrace.del[tpid].count(trnsTrace.transactions[reads[j]].tid)){
+                trnsTrace.del[tpid].insert({trnsTrace.transactions[reads[j]].tid, false});
+                delivery.push_back(trnsTrace.transactions[reads[j]].tid);
+              }
+
             }
-            ss << " " << trnsTrace.transactions[reads[j]].tid;
+            if(reads[j] == -1)
+                ss << " " << "init";
+            else
+                ss << " " << trnsTrace.transactions[reads[j]].tid;
             ss << " ]";
+            if(reads[j] != -1 && !trnsTrace.del[tpid].count(trnsTrace.transactions[reads[j]].tid)){
+                trnsTrace.del[tpid].insert({trnsTrace.transactions[reads[j]].tid, false});
+                delivery.push_back(trnsTrace.transactions[reads[j]].tid);
+            }
             s += iid_str;
             s += ss.str();
             s += "\n";
+
+            if(!delivery.empty()){
+              for(auto del : delivery){
+                std::stringstream ss;
+                ss << " DEL(" << tpid << "," << del << ")";
+                s += iid_str;
+                s += ss.str();
+                s += "\n";
+              }
+            }
           }
           if(!trnsTrace.transactions[transaction_idx].modification_order.empty()){
             std::stringstream ss;
@@ -167,7 +187,16 @@ std::string IIDSeqTrace::to_string(int _ind) const{
             s += ss.str();
             s += "\n";
           }
-          
+          ss1 << " Begin_Transaction (" << trnsTrace.transactions[transaction_idx].pid << " , ";
+          ss1 << trnsTrace.transactions[transaction_idx].tid << ") ";
+          s += iid_str;
+          s += ss1.str();
+          s += "\n";
+          ss << " Transactid ID : " << trnsTrace.transactions[transaction_idx].tid;
+          ss << "\t Vector Clock : " << trnsTrace.transactions[transaction_idx].clock.to_string();
+          s += iid_str;
+          s += ss.str();
+          s += "\n";
         }
     }
     if(error_locs.count(i)){

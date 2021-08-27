@@ -57,7 +57,7 @@ protected:
    */
   class CCVThread{
   public:
-    CCVThread() : partial_buffer_flush(-1) {};
+    CCVThread() : partial_buffer_flush(-1){};
     /* The CCV store buffer of this thread. Newer entries are further
      * to the back.
      */

@@ -150,7 +150,7 @@ protected:
      */
     std::vector<unsigned> event_indices;
     
-    std::vector<unsigned> transaction_indices;/// TODO
+    std::vector<unsigned> transaction_indices;//
 
     /* The iid-index of the last event of this thread, or 0 if it has not
      * executed any events yet.
@@ -250,12 +250,13 @@ protected:
 
     std::vector<Tid> happens_after;
     
-    std::vector<Tid> read_from;
+    std::vector<int> read_from; // index in transactions
     
     std::vector<Tid> modification_order;
     
     std::unordered_map<const void *, llvm::GenericValue> global_variables;
-    std::unordered_map<const void *, Tid> current_reads;
+    std::unordered_map<const void *, int> current_reads;
+    std::vector<std::pair<const void *, int>> vec_current_reads;
     //std::vector<std::pair<SymEv, Tid>> current_reads_vector; //SymEv
 
     //
@@ -340,12 +341,17 @@ protected:
 
     std::vector<Tid> can_read_from;
     std::map<int,bool> possible_reads; 
-    std::set<unsigned> happens_before; 
-    std::vector<std::vector<Event>> schedules;
+    std::set<unsigned> happens_before;
+    std::vector<std::vector<Transaction>> schedules;
+    std::vector<std::vector<Event>> schedules_event;
     
     bool localread = false;
     
     bool swappable = true;
+
+    bool current = false;
+
+    const void * var;
     /* Symbolic representation of the globally visible operation of this event.
      * Empty iff !may_conflict
      */
@@ -513,6 +519,8 @@ protected:
   bool transaction_happens_before(const Transaction &t, const VClock<int> &clock) const;
   void add_transaction_happens_after(Tid second, Tid first);
   void add_transaction_happens_after_thread(Tid second, IPid thread);
+  void createSchedules(int tid, void *ptr) { return;};
+  void createSchedule(int tid);
 
 };
 

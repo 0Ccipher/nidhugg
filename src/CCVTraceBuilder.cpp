@@ -224,37 +224,39 @@ bool CCVTraceBuilder::reset(){
       assert(prefix[i].possible_reads[last_read_from]);
       /*: Update old read's modification order i.e. transaction[last_read_from], create modification order for new read_from 
       , i.e transaction[reads_from] */
-      std::set<unsigned> &happens_before = prefix[i].happens_before;
+      /*std::set<unsigned> &happens_before = prefix[i].happens_before;
         for(auto j : prefix[i].possible_reads){
           if(!j.second){
             if(happens_before.count(j.first) != 0) { //Ensures that this write [hb] this read
               transactions[last_read_from].modification_order.pop_back();
             }
           }
-        }
+        }*/
 
       prefix[i].possible_reads[last_read_from] = false;
       /* Remove the rf edge */
       transactions[tidx].read_from.pop_back();
 
-      /*Allow to read from the nexet available source*/
+      /*Allow to read from the next available source*/
       {
         int reads_from = prefix[i].can_read_from.back();
+        // Allow to read from init
         if(reads_from == -1){
           prefix[i].can_read_from.pop_back();
-          transactions[tidx].read_from.clear();
+          //transactions[tidx].read_from.clear();
         }
         else {
           prefix[i].can_read_from.pop_back();
           prefix[i].possible_reads[reads_from] = true;
 
-          for(auto j : prefix[i].possible_reads){
+          /*for(auto j : prefix[i].possible_reads){
             if(!j.second){
               if(happens_before.count(j.first) != 0) { //write [hb] this read
                 transactions[reads_from].modification_order.emplace_back(j.first);
+                transactions[reads_from].clock += transactions[j.first].clock; //make co edge visible in vector clock
               }
             }
-          }
+          }*/
         }
 
         transactions[tidx].read_from.emplace_back(reads_from);
@@ -279,15 +281,18 @@ bool CCVTraceBuilder::reset(){
       new_prefix.back().can_read_from = std::move(e.can_read_from);
     if(!e.possible_reads.empty())
       new_prefix.back().possible_reads = std::move(e.possible_reads);
-    if(!e.happens_before.empty())
-      new_prefix.back().happens_before = std::move(e.happens_before);
+    //if(!e.happens_before.empty())
+      //new_prefix.back().happens_before = std::move(e.happens_before);
     if(!e.schedules.empty())
       new_prefix.back().schedules = std::move(e.schedules);
+    if(!e.schedules_event.empty())
+      new_prefix.back().schedules_event = std::move(e.schedules_event);
     new_prefix.back().localread = e.localread;
     new_prefix.back().swappable = e.swappable;
-    new_prefix.back().sym = std::move(e.sym);
+    new_prefix.back().current = e.current;
     new_prefix.back().tid = e.tid;
   }
+
   //Create the updated prefix
   //replay_prefix = std::move(new_prefix);
   prefix = std::move(new_prefix);
@@ -296,6 +301,7 @@ bool CCVTraceBuilder::reset(){
   for(int i=0 ; i < transactions.size() ; i++){
     transactions[i].global_variables.clear();
     transactions[i].current_reads.clear();
+    transactions[i].vec_current_reads.clear();
   }
   std::vector<Transaction> new_transactions;
   for(unsigned i = 0 ; i < tidx+1 ; i++){
@@ -307,14 +313,13 @@ bool CCVTraceBuilder::reset(){
     new_transactions.emplace_back(tr);
     //if(!t.modification_order.empty())
       //new_transactions.back().modification_order = std::move(t.modification_order);
-    if(!t.read_from.empty())
-      new_transactions.back().read_from = std::move(t.read_from);
+    //if(!t.read_from.empty())
+      //new_transactions.back().read_from = std::move(t.read_from);
     if(!t.happens_after.empty())
-      new_transactions.back().read_from = std::move(t.happens_after);
-    new_transactions.back().clock = t.clock;
-    new_transactions.back().above_clock = t.above_clock;
+      new_transactions.back().happens_after = std::move(t.happens_after);
+    //new_transactions.back().clock = t.clock;
+    //new_transactions.back().above_clock = t.above_clock;
     //for(auto j: new_transactions.back().modification_order)
-      //temp ++;
   }
   
   //replay_transactions = std::move(new_transactions);
@@ -1014,7 +1019,7 @@ long double CCVTraceBuilder::estimate_trace_count(int idx) const{
   return count;
 }
 
-//TODO
+//....................................
 
 int CCVTraceBuilder::compute_above_clock(unsigned i) {
   int last = -1;
@@ -1025,6 +1030,8 @@ int CCVTraceBuilder::compute_above_clock(unsigned i) {
     last = find_process_transaction(ipid, tidx-1);
     transactions[i].clock = transactions[last].clock;
     transactions[i].above_clock = transactions[last].above_clock;
+    transactions[i].clock += transactions[last].clock;
+    transactions[i].above_clock += transactions[last].above_clock; 
   } else {
     transactions[i].clock = VClock<IPid>();
     transactions[i].above_clock = VClock<IPid>();
@@ -1039,7 +1046,7 @@ void CCVTraceBuilder::compute_vclocks(){
   /* The first event of a thread happens after the spawn event that
    * created it.
    */
-  for (unsigned i = 0; i < transactions.size(); i++){
+  for (unsigned i = 0; i <= transaction_idx; i++){
     /* First add the non-reversible edges */
     int last = compute_above_clock(i);
    
@@ -1174,6 +1181,8 @@ void CCVTraceBuilder::beginTransaction(int tid) {
     threads[pid].transaction_indices.emplace_back(transaction_idx);
     curev().may_conflict = true;
     curev().tid = transactions[transaction_idx].tid;
+
+    compute_above_clock(transaction_idx);
   }
   else{
     assert(tid > 0);
@@ -1193,12 +1202,15 @@ void CCVTraceBuilder::beginTransaction(int tid) {
   }
 }
 
+
 void CCVTraceBuilder::endTransaction(int tid) {
   if(replay){
     //nondeterminism_error("Hi----Its here");
     curev().tid = tid;
     bool r = record_symbolic(SymEv::End(tid));
     curev().may_conflict = true;
+
+    createSchedule(tid);
     return;
   }
   assert(tid > 0);
@@ -1206,6 +1218,8 @@ void CCVTraceBuilder::endTransaction(int tid) {
   	curev().tid = tid;
     bool r = record_symbolic(SymEv::End(tid));
     curev().may_conflict = true;
+
+    createSchedule(tid);
   }
 }
 
@@ -1233,8 +1247,7 @@ int CCVTraceBuilder:: performWrite(void *ptr, llvm::GenericValue val , int typ){
 }
 
 
-int CCVTraceBuilder::performRead(void *ptr , int typ){
-
+int CCVTraceBuilder::performRead(void *ptr , int typ) {
   if(!typ)
     return -1;
 
@@ -1242,25 +1255,40 @@ int CCVTraceBuilder::performRead(void *ptr , int typ){
   if(!transactions.empty() && curev().iid.get_pid() == transactions[transaction_idx].pid) 
     curev().tid = transactions[transaction_idx].tid;
   curev().may_conflict = true;
-  //TODO: Replay. Add current_reads part
+
+  //Replay. Add current_reads part
   if(replay){
     int tid = curev().tid;
     int read_from = *(curev().read_from);
-    assert(read_from < transaction_idx);
-    if(!transactions[transaction_idx].current_reads.count(ptr)){
-      transactions[transaction_idx].current_reads.insert({ptr,read_from});
+    
+    if(curev().localread != true && !transactions[transaction_idx].current_reads.count(ptr)){
+      transactions[transaction_idx].current_reads[ptr] = read_from;
+      transactions[transaction_idx].vec_current_reads.emplace_back(std::make_pair(ptr,read_from));
+      transactions[transaction_idx].read_from.emplace_back(read_from);
+      curev().current = true;
     }
-    if(read_from!= -1 && !curev().possible_reads.empty()){
+    if(curev().localread != true && read_from!= -1 && !curev().possible_reads.empty()){
       //Add co edge to transaction[reads_from] form transactions \in [po U rf] this transaction
       std::set<unsigned> &happens_before = curev().happens_before;
+      for (unsigned j = 0; j < transactions.size(); ++j) {
+          if(transaction_happens_before(transactions[j],transactions[transaction_idx].above_clock)) {
+            happens_before.insert(j);
+          }
+      }
       for(auto j : curev().possible_reads){
         if(!j.second){
-          if(happens_before.count(j.first) != 0) {//Write [hb] this read
+          if(happens_before.count(j.first) != 0) { // write event [hb] this read
             transactions[read_from].modification_order.emplace_back(j.first);
+            transactions[read_from].clock += transactions[j.first].clock; // co edge
           }
         }
       }
+      compute_vclocks(); //Update the transitive closure due to this mo edge
+
+      transactions[transaction_idx].clock += transactions[read_from].clock;
+      transactions[transaction_idx].above_clock += transactions[read_from].above_clock;
     }
+    curev().var = ptr;
     return read_from;
   }
 
@@ -1273,13 +1301,16 @@ int CCVTraceBuilder::performRead(void *ptr , int typ){
       curev().localread = true;
       curev().swappable = false;
       curev().read_from = transaction_idx;
+      curev().var = ptr;
       return transaction_idx;
     }
   }
     //If a read on this variable is already present
   if(cur_transaction.current_reads.count(ptr)){
     curev().swappable = false;
+    curev().current = true;
     curev().read_from = cur_transaction.current_reads[ptr];
+    curev().var = ptr;
     return cur_transaction.current_reads[ptr];
   }
   
@@ -1292,12 +1323,15 @@ int CCVTraceBuilder::performRead(void *ptr , int typ){
     }
     if(!flag){
       curev().read_from = -1;
+      cur_transaction.current_reads[ptr] = -1;
+      cur_transaction.vec_current_reads.emplace_back(std::make_pair(ptr,-1));
+      cur_transaction.read_from.emplace_back(-1);
+      curev().var = ptr;
       return -1;
     }
   }
 
-  // If possible, read from init.
-  compute_vclocks(); // computes [po U rf]* and [po U rf U co]*
+  //compute_vclocks(); // computes [po U rf]* and [po U rf U co]*
 
   std::vector<std::vector<unsigned>> writes_by_process(threads.size()); // mapping: [process -> transactions(W_ptr)]
   std::set<unsigned> &happens_before = curev().happens_before;
@@ -1343,34 +1377,194 @@ int CCVTraceBuilder::performRead(void *ptr , int typ){
       if(!j.second){
         if(happens_before.count(j.first) != 0) {//Ensures that this write [hb] this read
           transactions[reads_from].modification_order.emplace_back(j.first);
+          transactions[reads_from].clock += transactions[j.first].clock; // make co edge visible in vector clock
         }
       }
     }
-    //SymEv sym_ev = curev().sym;
-    /*if(sym_ev.is_compatible_with(curev().sym))
-      temp++;*/
+
+    compute_vclocks(); //Update the transitive closure due to this mo edge
+
     cur_transaction.read_from.emplace_back(reads_from);
-    if(!cur_transaction.current_reads.count(ptr)){
-      cur_transaction.current_reads.insert({ptr,reads_from});
+    if(!cur_transaction.current_reads.count(ptr) ) {
+      cur_transaction.current_reads[ptr] = reads_from;
+      cur_transaction.vec_current_reads.emplace_back(std::make_pair(ptr,reads_from));
     }
     //cur_transaction.current_reads_vector.emplace_back(std::make_pair(sym_ev,reads_from));
     curev().read_from = reads_from;
 
     tasks_created = tasks_created + curev().can_read_from.size();
-    temp += curev().can_read_from.size();
+
+    transactions[transaction_idx].clock += transactions[reads_from].clock; // make rf visible in vector clock
+    transactions[transaction_idx].above_clock += transactions[reads_from].above_clock;
+    curev().var = ptr;
     return reads_from;
   }
   
   return -1;
 }
 
+void CCVTraceBuilder::createSchedule(int tid){
+  IPid pid = curev().iid.get_pid();
+  Transaction &t = transactions[transaction_idx];
+
+  std::vector<Transaction> transactions_happens_before;
+  std::vector<Event> events;
+  if(!t.global_variables.empty()){
+    for(auto ptr : t.global_variables) {
+      for(int i = transaction_idx-1 ; i >= 0 ; i--){
+        if(transactions[i].current_reads.count(ptr.first)){
+          if(!transaction_happens_before(transactions[i],t.above_clock)) {
+
+            
+            //temp++;
+            bool possible = true;
+            std::vector<std::pair<const void *, int>> &cur_reads = transactions[i].vec_current_reads;
+            
+            if(!cur_reads.empty())
+              for(auto trw1 : cur_reads){
+                
+                
+
+                //Check only for those vars read before this ptr(var) in trans[i]
+                if(trw1.first == ptr.first){
+                  break;
+                }
+
+                //*** Check for trw1 [po U rf] t and t overwrites trw1
+                if(trw1.second != -1 && transaction_happens_before(transactions[trw1.second],t.above_clock) && 
+                                                      t.global_variables.count(trw1.first)){
+                  possible = false;
+                  break;
+                }
+
+                if(trw1.second == -1 && t.global_variables.count(trw1.first)){
+                  possible = false;
+                  break;
+                } 
+                //****** Check for trw1 [rf] trns[i]  AND trw1 [po U rf] trw2.
+                //Special case for trw1 = -1.
+                if( trw1.second == -1) {
+                  for( int j = 0 ; j < transaction_idx ; j++) {
+                    if(transaction_happens_before(transactions[j],t.above_clock) && transactions[j].global_variables.count(trw1.first)){
+                      possible = false;
+                      break;
+                    }
+                  }
+                  /*for( auto trw2: t.read_from){
+                    if(trw2 != -1 && transactions[trw2].global_variables.count(trw1.first)) {
+                      possible = false;
+                      break;
+                    }
+                  }
+                  for( int trw2 = 0 ; trw2 < transaction_idx ; trw2++) {
+                    if(transactions[trw2].get_pid() == t.get_pid()) {
+                      if(transactions[trw2].global_variables.count(trw1.first)) {
+                        possible = false;
+                        break;
+                      }
+                    } 
+                  }*/
+
+                }
+
+                if(trw1.second != -1) {
+
+                  //**** (i). trw1 [po U rf] trw2 and trw2 [rf] t 
+                  if(!t.read_from.empty()) 
+                  for( auto trw2: t.read_from){
+                    if((trw2 != -1 && trw2 != trw1.second) && (transaction_happens_before(transactions[trw1.second],transactions[trw2].above_clock) && 
+                                                          transactions[trw2].global_variables.count(trw1.first))) {
+                      possible = false;
+                      break;
+                    }
+                  }
+
+                  //** (i). trw1 [po U rf] trw2 and trw2 [po] t
+                  if(possible)
+                  for( int trw2 = 0 ; trw2 < transaction_idx ; trw2++) {
+                    if(transactions[trw2].get_pid() == t.get_pid()) {
+                      if(trw2 != trw1.second && (transaction_happens_before(transactions[trw1.second],transactions[trw2].above_clock) && 
+                                                                                    transactions[trw2].global_variables.count(trw1.first))) {
+                        possible = false;
+                        break;
+                      }
+                    } 
+                  }
+
+                }
+
+                if(!possible){
+                  //temp--;
+                  break;
+                }
+              }
+
+            if(possible){
+              std::vector<Transaction> schedule;
+              std::unordered_set<int> tids;
+              std::unordered_set<int> pids;
+              std::vector<Event> schedule_events;
+
+              int cur_tid = transactions[i].get_tid()-1;
+
+              for( int j = i+1 ; j <= transaction_idx; j++){
+                if(transaction_happens_before(transactions[j],t.above_clock)){
+                  Transaction tr(++cur_tid, transactions[j].get_pid(),transactions[j].get_index());
+                  schedule.emplace_back(tr);
+                  schedule.back().clock = transactions[j].clock;
+                  schedule.back().above_clock = transactions[j].above_clock; //TOD:Update the read from for replay above..
+
+                  tids.insert(transactions[j].get_tid());
+                  if(!pids.count(transactions[j].get_pid()))
+                    pids.insert(transactions[j].get_pid());
+                }
+              }
+              //TODO: Chech the events with same pid and transactions happened before rather checking for tid
+              int j = 0;
+              for(j = prefix_idx; ; j--){
+                if(prefix[j].tid == transactions[i].get_tid()){
+                  break;
+                }
+                if(tids.count(prefix[j].tid) || prefix[j].sym.kind == SymEv::JOIN || pids.count(prefix[j].iid.get_pid())){
+                  Event &e = prefix[j];
+                  int pid = e.iid.get_pid();
+                  int index = e.iid.get_index();
+                  schedule_events.emplace_back(e);
+                }
+              }
+              j++;
+              while(j--){
+                if(prefix[j].tid != transactions[i].get_tid()){
+                  temp = 1000;
+                  break;
+                }
+                if(is_load(j) && prefix[j].var == ptr.first && !prefix[j].current){
+                  temp = 200;// = schedule_events.size();
+                  break;
+                }
+              }
+
+              if(!schedule_events.empty())
+                temp += schedule.back().tid;
+                //temp += schedule_events.size();
+            }
+          }
+        }
+      } 
+    }
+  }
+
+  return;
+}
+
 uint64_t CCVTraceBuilder::tracecount(){
 	uint64_t t = 0;
 	int64_t value = 0;
 	for(unsigned i=0 ; i < prefix.size() ; ++i){
-		if(is_begin(i))
-			t++;
+		if(prefix[i].sym.kind == SymEv::SPAWN)
+			t = i;
 	}
-	t = temp+1;
+	t = temp;
+  //t = prefix.size();
 	return t;
 }

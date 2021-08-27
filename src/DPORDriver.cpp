@@ -36,6 +36,7 @@
 #include <iomanip>
 #include <cfloat>
 #include <thread>
+#include <queue>
 
 #if defined(HAVE_LLVM_IR_LLVMCONTEXT_H)
 #include <llvm/IR/LLVMContext.h>
@@ -498,4 +499,3 @@ DPORDriver::Result DPORDriver::run(){
 
   return res;
 }
-
