@@ -134,6 +134,7 @@ std::string IIDSeqTrace::to_string(int _ind) {
           trnsTrace.del[tpid].insert({trnsTrace.transactions[transaction_idx].tid , true});
           std::vector<int> delivery;
 
+          //TODO: Update the Delivery code
           if(!trnsTrace.transactions[transaction_idx].read_from.empty()){
             std::stringstream ss;
             ss << " Reads From [";

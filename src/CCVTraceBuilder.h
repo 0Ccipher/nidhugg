@@ -286,11 +286,6 @@ protected:
    * same thread. At most one event in the sequence may have conflicts
    * with other events, and if the sequence has a conflicting event,
    * it must be th
-#include "VClock.h"
-#include "SymEv.h"
-#include "WakeupTrees.h"
-#include "Option.h"
-#include "PrefixHeuristic.h"e first event in the sequence.
    */
   class Event{
   public:
@@ -338,7 +333,8 @@ protected:
     /* Tid of Transaction */
     Tid tid;
     
-
+    std::vector<Event> replay_events_before;
+    std::vector<Transaction> replay_transactions_before;
     std::vector<Tid> can_read_from;
     std::map<int,bool> possible_reads; 
     std::set<unsigned> happens_before;
@@ -511,7 +507,8 @@ protected:
   int temp = 0;
   std::vector<Event> replay_prefix;
   std::vector<Transaction> replay_transactions;
-  
+  std::vector<std::pair<int,int>> record_replays_for_events;
+
   unsigned find_process_transaction(IPid pid, int index) const;
   bool is_begin(unsigned idx) const;
   bool is_end(unsigned idx) const;
@@ -521,6 +518,7 @@ protected:
   void add_transaction_happens_after_thread(Tid second, IPid thread);
   void createSchedules(int tid, void *ptr) { return;};
   void createSchedule(int tid);
+  void record_replay(int eindex , int tindex);
 
 };
 
