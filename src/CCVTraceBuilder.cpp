@@ -211,6 +211,7 @@ bool CCVTraceBuilder::reset(){
   if( prefix.size() <= 0)
     return false;
 
+  //Record replays 
   if(!record_replays_for_events.empty()){
     for(auto event: record_replays_for_events){
       record_replay(event.first,event.second);
@@ -1503,9 +1504,11 @@ int CCVTraceBuilder::performRead(void *ptr , int typ) {
       //Add co edge to transaction[reads_from] form transactions \in [po U rf] this transaction
       std::set<unsigned> &happens_before = curev().happens_before;
       for (unsigned j = 0; j < transactions.size(); ++j) {
+        if (has_store_on_var(ptr,j)){
           if(transaction_happens_before(transactions[j],transactions[transaction_idx].above_clock)) {
             happens_before.insert(j);
           }
+        }
       }
       for(auto j : curev().possible_reads){
         if(!j.second){
@@ -1515,6 +1518,7 @@ int CCVTraceBuilder::performRead(void *ptr , int typ) {
           }
         }
       }
+
       compute_vclocks(); //Update the transitive closure due to this mo edge
 
       transactions[transaction_idx].clock += transactions[read_from].clock;
@@ -1549,7 +1553,7 @@ int CCVTraceBuilder::performRead(void *ptr , int typ) {
   //Return -1, if no transaction has a write on this variable, i.e read from init
   {
     bool flag = false;
-    for(int i = 0; i < transactions.size() ; i++ ){
+    for(int i = 0; i < transaction_idx ; i++ ){
       if(transactions[i].global_variables.count(ptr))
         flag = true;
     }
@@ -1565,7 +1569,7 @@ int CCVTraceBuilder::performRead(void *ptr , int typ) {
     }
   }
 
-  //compute_vclocks(); // computes [po U rf]* and [po U rf U co]*
+  compute_vclocks(); // computes [po U rf]* and [po U rf U co]*
 
   std::vector<std::vector<unsigned>> writes_by_process(threads.size()); // mapping: [process -> transactions(W_ptr)]
   std::set<unsigned> &happens_before = curev().happens_before;
@@ -1634,6 +1638,7 @@ int CCVTraceBuilder::performRead(void *ptr , int typ) {
     curev().var = ptr;
 
     record_replays_for_events.emplace_back(std::make_pair(prefix_idx,transaction_idx)); // Record the replay events
+
     return reads_from;
   }
   
@@ -1743,7 +1748,7 @@ void CCVTraceBuilder::createSchedule(int tid){
                     pids.insert(transactions[j].get_pid());
                 }
               }
-              //TODO: Chech the events with same pid and transactions happened before rather checking for tid
+              //TODO: Check the events with same pid and transactions happened before rather checking for tid
               int j = prefix_idx;
               for( ; ; j--){
                 if(prefix[j].tid == transactions[i].get_tid()){
@@ -1769,8 +1774,31 @@ void CCVTraceBuilder::createSchedule(int tid){
                     e.read_from = tids[transactions[e_read_from].get_tid()] - 1; // tid - 1 is index in transactions vector
                   else
                     e.read_from = e_read_from;
+
                   //can_read_from must be empty as it is a schedule
+                  e.can_read_from.clear();
+                  //e.replay_transactions_before.clear();
+                  //e.replay_events_before.clear();
+
                   //Schedules also empty 
+                  e.schedules.clear();
+                  e.schedules_event.clear();
+
+                  //Update possible reads
+                  if(!e.possible_reads.empty()){
+                    std::map<int,bool> new_possible_reads;
+                    for(auto tr:e.possible_reads){
+                      if(tids.count(transactions[tr.first].get_tid())) {
+                        int idx = tids[transactions[tr.first].get_tid()] - 1; // it is index 
+                        new_possible_reads[idx] = tr.second;
+                      }
+                      else{
+                        new_possible_reads[tr.first] = tr.second;
+                      }
+                    }
+                    e.possible_reads = new_possible_reads;
+                  }
+
                   e.swappable = false; // Do not update it's source as it a reply from schedules
 
                   schedule_events.insert(schedule_events.begin() , e); // Add event to schedule
@@ -1784,11 +1812,11 @@ void CCVTraceBuilder::createSchedule(int tid){
                 }
                 if(is_load(j) && prefix[j].var == ptr.first && !prefix[j].current && !prefix[j].localread && prefix[j].swappable){
                   //temp = 200;// = schedule_events.size();
-                  prefix[j].schedules.push_back(schedule);
-                  prefix[j].schedules_event.push_back(schedule_events);
+                  prefix[j].schedules.insert(prefix[j].schedules.begin() , schedule);
+                  prefix[j].schedules_event.insert(prefix[j].schedules_event.begin() , schedule_events);
 
-                  //temp = prefix[j].schedules.size();
-                  temp++;
+                  //temp += prefix[j].schedules.size();
+                  //temp++;
                   tasks_created = tasks_created + 1; // new task crerated
 
                   break;
