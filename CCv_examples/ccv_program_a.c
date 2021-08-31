@@ -9,16 +9,18 @@ void __VERIFIER_atomic_t1(){
 }
 
 void __VERIFIER_atomic_t2(){
-	y = 1;
+	y = 2;
+	x = 2;
  }
 
 void __VERIFIER_atomic_t3(){
-	x = 2;
+	x = 3;
 	printf(" z3 = %d: ",z);
 }
 void __VERIFIER_atomic_t4(){
 	printf(" y4 = %d: ",y);
 	printf(" x4 = %d: ",x);
+	//assert(x != 3);
 }
 
 
