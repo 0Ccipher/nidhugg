@@ -1382,7 +1382,8 @@ void CCVTraceBuilder::endTransaction(int tid) {
     bool r = record_symbolic(SymEv::End(tid));
     curev().may_conflict = true;
 
-    createSchedule(tid);
+    if(!transactions[transaction_idx].global_variables.empty())
+      createSchedule(tid);
     return;
   }
   assert(tid > 0);
@@ -1391,7 +1392,8 @@ void CCVTraceBuilder::endTransaction(int tid) {
     bool r = record_symbolic(SymEv::End(tid));
     curev().may_conflict = true;
 
-    createSchedule(tid);
+    if(!transactions[transaction_idx].global_variables.empty())
+      createSchedule(tid);
   }
 }
 
@@ -1500,7 +1502,7 @@ int CCVTraceBuilder::performRead(void *ptr , int typ) {
       transactions[transaction_idx].read_from.emplace_back(read_from);
 
     }
-    if(curev().localread != true && read_from!= -1 && !curev().current && !curev().possible_reads.empty()){
+    if(curev().localread != true && read_from!= -1 && !curev().current) {
       //Add co edge to transaction[reads_from] form transactions \in [po U rf] this transaction
       std::set<unsigned> &happens_before = curev().happens_before;
       for (unsigned j = 0; j < transactions.size(); ++j) {
@@ -1510,19 +1512,17 @@ int CCVTraceBuilder::performRead(void *ptr , int typ) {
           }
         }
       }
-      for(auto j : curev().possible_reads){
-        if(!j.second){
-          if(happens_before.count(j.first) != 0) { // write event [hb] this read
-            transactions[read_from].modification_order.emplace_back(j.first);
-            transactions[read_from].clock += transactions[j.first].clock; // co edge
-          }
-        }
+      for(auto j : happens_before) {
+            transactions[read_from].modification_order.emplace_back(j);
+            transactions[read_from].clock += transactions[j].clock; // co edge
       }
 
-      compute_vclocks(); //Update the transitive closure due to this mo edge
 
       transactions[transaction_idx].clock += transactions[read_from].clock;
       transactions[transaction_idx].above_clock += transactions[read_from].above_clock;
+
+      compute_vclocks(); //Update the transitive closure due to this mo edge
+
     }
     curev().var = ptr;
     return read_from;
@@ -1582,9 +1582,12 @@ int CCVTraceBuilder::performRead(void *ptr , int typ) {
     }
   }
 
-  // Check if, it can read from init.
+
+  std::vector<std::pair<const void *, int>> &cur_reads = transactions[transaction_idx].vec_current_reads; // Current reads from
+
+  // Check if, it can read from init and .
   if(happens_before.empty()){
-    curev().can_read_from.emplace_back(-1);
+    curev().can_read_from.push_back(-1);
   }
 
   for (unsigned p = 0; p < threads.size(); ++p){
@@ -1597,6 +1600,15 @@ int CCVTraceBuilder::performRead(void *ptr , int typ) {
           break;
         }
       }
+      //Make sure that this new transaction does not overwrite earlier write violating the semantics
+      if(!flag){
+      for(auto tr : cur_reads){
+        if((tr.second == -1 && transactions[j].global_variables.count(tr.first)) || (transactions[j].global_variables.count(tr.first) && tr.second != j)){
+          flag = true;
+          break;
+        }
+      }}
+
       if(!flag){
         curev().can_read_from.emplace_back(j);
         curev().possible_reads.insert({j,false});
@@ -1607,10 +1619,13 @@ int CCVTraceBuilder::performRead(void *ptr , int typ) {
   if(!curev().can_read_from.empty()) {
     int reads_from = curev().can_read_from.back();
     curev().can_read_from.pop_back();
-    // Currently reading from this transaction
-    curev().possible_reads[reads_from] = true; 
 
-    //TODO: Add co edge to transaction[reads_from] form t \in [po U rf] 
+    // Currently reading from this transaction
+    if( reads_from != -1)
+      curev().possible_reads[reads_from] = true; 
+
+    //Add co edge to transaction[reads_from] form t \in [po U rf] 
+    if( reads_from != 1) //Ensures that it is not init
     for(auto j : curev().possible_reads){
       if(!j.second){
         if(happens_before.count(j.first) != 0) {//Ensures that this write [hb] this read
@@ -1620,7 +1635,6 @@ int CCVTraceBuilder::performRead(void *ptr , int typ) {
       }
     }
 
-    compute_vclocks(); //Update the transitive closure due to this mo edge
 
     cur_transaction.read_from.emplace_back(reads_from);
     if(!cur_transaction.current_reads.count(ptr) ) {
@@ -1632,12 +1646,16 @@ int CCVTraceBuilder::performRead(void *ptr , int typ) {
 
     tasks_created = tasks_created + curev().can_read_from.size();
 
-    transactions[transaction_idx].clock += transactions[reads_from].clock; // make rf visible in vector clock
-    transactions[transaction_idx].above_clock += transactions[reads_from].above_clock;
+    if(reads_from != -1) {
+      transactions[transaction_idx].clock += transactions[reads_from].clock; // make rf visible in vector clock
+      transactions[transaction_idx].above_clock += transactions[reads_from].above_clock;
+    }
 
     curev().var = ptr;
 
     record_replays_for_events.emplace_back(std::make_pair(prefix_idx,transaction_idx)); // Record the replay events
+
+    compute_vclocks(); //Update the transitive closure due to this mo edge
 
     return reads_from;
   }
@@ -1693,7 +1711,8 @@ void CCVTraceBuilder::createSchedule(int tid){
                     }
                   }
 
-                }
+                }    bool may_conflict;
+
 
                 if(trw1.second != -1) {
 

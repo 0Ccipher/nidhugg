@@ -26,12 +26,16 @@
 #include "WakeupTrees.h"
 #include "Option.h"
 #include "PrefixHeuristic.h"
-//#include "CCVSchedules.h"
+#include "CCVSchedules.h"
 
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <set>
+#include <queue>
+#include <memory>
+
+
 
 #include <boost/container/flat_map.hpp>
 #include <llvm/ExecutionEngine/GenericValue.h>
@@ -287,6 +291,7 @@ protected:
    * with other events, and if the sequence has a conflicting event,
    * it must be th
    */
+
   class Event{
   public:
     Event(const IID<IPid> &iid, int alt = 0, SymEv sym = {})
@@ -329,17 +334,19 @@ protected:
 
     Option<int> read_from;
     
-    //TODO
+    
     /* Tid of Transaction */
     Tid tid;
     
     std::vector<Event> replay_events_before;
     std::vector<Transaction> replay_transactions_before;
-    std::vector<Tid> can_read_from;
+    std::vector<int> can_read_from;
     std::map<int,bool> possible_reads; 
     std::set<unsigned> happens_before;
     std::vector<std::vector<Transaction>> schedules;
     std::vector<std::vector<Event>> schedules_event;
+
+    std::shared_ptr<Schedule> new_schedules;
     
     bool localread = false;
     
@@ -508,6 +515,34 @@ protected:
   std::vector<Event> replay_prefix;
   std::vector<Transaction> replay_transactions;
   std::vector<std::pair<int,int>> record_replays_for_events;
+
+  //std::map<>
+  
+  /*struct Schedule{
+  public:
+    int depth;
+    Event event;
+    std::vector<Event> events_before;
+    std::vector<Transaction> transactions_before;
+    std::vector<int> new_read_from;
+    std::vector<std::vector<Transaction>> scheduled_transactions;
+    std::vector<std::vector<Event>> scheduled_events;
+
+    Schedule(int depth) {
+      this->depth = depth;
+    }
+
+  };
+
+  class DepthCompare {
+  public:
+    bool operator()(const std::shared_ptr<Schedule> &a,
+                  const std::shared_ptr<Schedule> &b) const {
+      return a->depth < b->depth;
+    }
+  };
+
+  std::priority_queue<std::shared_ptr<Schedule>, std::vector<std::shared_ptr<Schedule>>, DepthCompare> next_execution_trace;*/
 
   unsigned find_process_transaction(IPid pid, int index) const;
   bool is_begin(unsigned idx) const;

@@ -48,6 +48,7 @@ libnidhugg_a_SOURCES = \
   CCVTraceBuilder.cpp CCVTraceBuilder.h \
   VClock.cpp VClock.h VClock.tcc \
   PrefixHeuristic.cpp PrefixHeuristic.h\
+  CCVSchedules \
   vecset.h vecset.tcc
 libnidhugg_a_CXXFLAGS = -fno-rtti
 
