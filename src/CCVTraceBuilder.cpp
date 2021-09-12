@@ -332,7 +332,7 @@ bool CCVTraceBuilder::reset(){
           new_prefix[j].tid = current_tid;
           new_prefix[j].sym.arg.num = current_tid;
 
-          //new_prefix[j].swappable = false; // can not be swapped
+          new_prefix[j].swappable = false; // can not be swapped
 
           //SymEv &sym = new_prefix[j].sym;
           //if(sym.kind == SymEv::BEGIN || sym.kind == SymEv::END || sym.kind == SymEv::LOAD_CCV || sym.kind == SymEv::STORE_CCV) {
