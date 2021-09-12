@@ -55,21 +55,23 @@ class STransaction{
     }
 };
   
-class SEvent{
+struct SEvent{
  public:
-    SEvent(const IID<IPid> &iid, Tid tid, int depth , SymEv sym = {})
-      : iid(iid), origin_iid(iid),tid(tid),sym(std::move(sym)), depth(depth) {}
+    SEvent(const IID<IPid> &iid, SymEv sym = {})
+      : iid(iid), origin_iid(iid),sym(std::move(sym)) {}
 
     int alt;
     int size;
     bool pinned;
+    
     IID<IPid> iid;
     IID<IPid> origin_iid;
+
     int read_from;
     
     Tid tid;
     
-    std::vector<int> can_read_from;
+    std::vector<int> new_read_from;
 
     std::shared_ptr<Schedule> new_schedules;
     
@@ -105,9 +107,18 @@ struct Schedule{
       return a->depth < b->depth;
     }
   };
+/*class DepthCompare {
+public:
+  bool operator()(const SEvent &a,
+                const SEvent &b) const {
+    return a.depth < b.depth;
+  }
+};*/
 
 class CCVSchedules {
  public:
  	std::priority_queue<std::shared_ptr<SEvent>, std::vector<std::shared_ptr<SEvent>>, DepthCompare> scheduler;
+  //std::priority_queue<SEvent, std::vector<SEvent>, DepthCompare> scheduler;
 
+  SEvent create_event();
 };

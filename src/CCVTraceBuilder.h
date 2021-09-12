@@ -296,7 +296,7 @@ protected:
   public:
     Event(const IID<IPid> &iid, int alt = 0, SymEv sym = {})
       : alt(0), size(1),iid(iid), pinned(false), origin_iid(iid), md(0), may_conflict(false),
-        sym(std::move(sym)), tid(0), sleep_branch_trace_count(0) {};
+        sym(std::move(sym)), tid(0), sleep_branch_trace_count(0), depth(0) {};
     /* Some instructions may execute in several alternative ways
      * nondeterministically. (E.g. malloc may succeed or fail
      * nondeterministically if Configuration::malloy_may_fail is set.)
@@ -338,13 +338,13 @@ protected:
     /* Tid of Transaction */
     Tid tid;
     
-    std::vector<Event> replay_events_before;
-    std::vector<Transaction> replay_transactions_before;
+    //std::vector<Event> replay_events_before;
+    //std::vector<Transaction> replay_transactions_before;
     std::vector<int> can_read_from;
     std::map<int,bool> possible_reads; 
     std::set<unsigned> happens_before;
-    std::vector<std::vector<Transaction>> schedules;
-    std::vector<std::vector<Event>> schedules_event;
+    //std::vector<std::vector<Transaction>> schedules;
+    //std::vector<std::vector<Event>> schedules_event;
 
     std::shared_ptr<Schedule> new_schedules;
     
@@ -353,6 +353,8 @@ protected:
     bool swappable = true;
 
     bool current = false;
+
+    int depth;
 
     const void * var;
     /* Symbolic representation of the globally visible operation of this event.
@@ -507,42 +509,18 @@ protected:
   SymAddrSize get_addr(unsigned idx) const;
   SymData get_data(int idx, const SymAddrSize &addr) const;
   
-  //TODO
-  //CCVSchedules ccvschedules(-1, -1);
+  //TODO:
 
   int tasks_created = 0;
-  int temp = 0;
+  int temp = 1;
+  
   std::vector<Event> replay_prefix;
   std::vector<Transaction> replay_transactions;
+
   std::vector<std::pair<int,int>> record_replays_for_events;
 
-  //std::map<>
-  
-  /*struct Schedule{
-  public:
-    int depth;
-    Event event;
-    std::vector<Event> events_before;
-    std::vector<Transaction> transactions_before;
-    std::vector<int> new_read_from;
-    std::vector<std::vector<Transaction>> scheduled_transactions;
-    std::vector<std::vector<Event>> scheduled_events;
-
-    Schedule(int depth) {
-      this->depth = depth;
-    }
-
-  };
-
-  class DepthCompare {
-  public:
-    bool operator()(const std::shared_ptr<Schedule> &a,
-                  const std::shared_ptr<Schedule> &b) const {
-      return a->depth < b->depth;
-    }
-  };
-
-  std::priority_queue<std::shared_ptr<Schedule>, std::vector<std::shared_ptr<Schedule>>, DepthCompare> next_execution_trace;*/
+  CCVSchedules ccvschedules;
+  std::unordered_map<int,std::shared_ptr<SEvent>> current_schedules; // depth->SEvent
 
   unsigned find_process_transaction(IPid pid, int index) const;
   bool is_begin(unsigned idx) const;
@@ -554,7 +532,8 @@ protected:
   void createSchedules(int tid, void *ptr) { return;};
   void createSchedule(int tid);
   void record_replay(int eindex , int tindex);
-
+  bool is_equivalent(std::vector<std::vector<STransaction>> &schedules , std::vector<STransaction> this_schedule);
+  void add_to_queue();
 };
 
 #endif
