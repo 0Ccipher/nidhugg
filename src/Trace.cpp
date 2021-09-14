@@ -106,26 +106,13 @@ std::string IIDSeqTrace::to_string(int _ind) {
 
   for(unsigned i = 0; i < computation.size(); ++i){
     std::string iid_str = ind + cpind[computation[i].get_pid()] + computation[i].to_string();
-    s += iid_str;
+    //s += iid_str;
     if(computation[i].get_pid().is_auxiliary()){
       s+=" UPDATE";
     }
     std::string strns;
     {
-      if(auto md = computation_md[i]){
-        std::stringstream ss;
-        ss << " " << TraceUtil::basename(md.file) << ":" << md.line;
-        strns = TraceUtil::get_src_line_verbatim(md);
-        if(strns.find("}") == 0){
-          ss << ": " << "End_Transaction (" << trnsTrace.transactions[transaction_idx].pid << " , ";
-          ss << trnsTrace.transactions[transaction_idx].tid << ") ";
-        }
-        else  
-          ss << ": " << TraceUtil::get_src_line_verbatim(md);
-        s += ss.str();
-      }
-      s += "\n";
-      if( strns.find("__VERIFIER_atomic_") == 0){
+      if(trnsTrace.computation_sym[i].type == 1){
           std::stringstream ss;
           std::stringstream ss1;
           transaction_idx++;
@@ -194,11 +181,25 @@ std::string IIDSeqTrace::to_string(int _ind) {
           s += ss1.str();
           s += "\n";
           ss << " Transactid ID : " << trnsTrace.transactions[transaction_idx].tid;
-          ss << "\t Vector Clock : " << trnsTrace.transactions[transaction_idx].clock.to_string();
+          ss << "\t Vector Clock[hb]: " << trnsTrace.transactions[transaction_idx].above_clock.to_string();
+          ss << "\t Vector Clock[hb U mo]: " << trnsTrace.transactions[transaction_idx].clock.to_string();
           s += iid_str;
           s += ss.str();
-          s += "\n";
         }
+      else if(auto md = computation_md[i]){
+        std::stringstream ss;
+        ss << " " << TraceUtil::basename(md.file) << ":" << md.line;
+        strns = TraceUtil::get_src_line_verbatim(md);
+        if(strns.find("}") == 0 && transaction_idx >= 0) {
+          ss << ": " << "End_Transaction (" << trnsTrace.transactions[transaction_idx].pid << " , ";
+          ss << trnsTrace.transactions[transaction_idx].tid << ") ";
+        }
+        else  
+          ss << ": " << TraceUtil::get_src_line_verbatim(md);
+        s += iid_str;
+        s += ss.str();
+      }
+      s += "\n";
     }
     if(error_locs.count(i)){
       // Indentation

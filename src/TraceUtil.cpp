@@ -208,15 +208,22 @@ unsigned SrcLocVectorBuilder::intern_string(std::string &&s) {
 TIDSeqTrace TIDSeqTraceBuilder::build() {
   TIDSeqTrace ret(std::move(vector));
   vector.transactions.clear();
+  vector.computation_sym.clear();
   return ret;
 }
 
-void TIDSeqTraceBuilder::push_from(int pid, int tid, int tindex, VClock<int> clk, std::vector<int> reads, std::vector<unsigned> mo) {
+void TIDSeqTraceBuilder::push_from(int pid, int tid, int tindex, VClock<int>abv_clk , VClock<int> clk, std::vector<int> reads, std::vector<unsigned> mo) {
   vector.transactions.emplace_back(pid, tid, tindex);
   vector.trns_idx++;
   vector.transactions[vector.trns_idx].clock = clk;
+  vector.transactions[vector.trns_idx].above_clock = abv_clk;
   vector.transactions[vector.trns_idx].read_from.resize(reads.size());
   vector.transactions[vector.trns_idx].read_from = reads;
   vector.transactions[vector.trns_idx].modification_order = mo;
 }
+
+void TIDSeqTraceBuilder::push_sym(int type){
+  vector.computation_sym.emplace_back(type);
+}
+
 

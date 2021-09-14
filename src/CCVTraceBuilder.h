@@ -83,21 +83,21 @@ public:
   virtual NODISCARD bool full_memory_conflict() override;
   virtual NODISCARD bool fence() override;
   virtual NODISCARD bool join(int tgt_proc) override;
-  virtual NODISCARD bool mutex_lock(const SymAddrSize &ml) override;
-  virtual NODISCARD bool mutex_lock_fail(const SymAddrSize &ml) override;
-  virtual NODISCARD bool mutex_trylock(const SymAddrSize &ml) override;
-  virtual NODISCARD bool mutex_unlock(const SymAddrSize &ml) override;
-  virtual NODISCARD bool mutex_init(const SymAddrSize &ml) override;
-  virtual NODISCARD bool mutex_destroy(const SymAddrSize &ml) override;
-  virtual NODISCARD bool cond_init(const SymAddrSize &ml) override;
-  virtual NODISCARD bool cond_signal(const SymAddrSize &ml) override;
-  virtual NODISCARD bool cond_broadcast(const SymAddrSize &ml) override;
+  virtual NODISCARD bool mutex_lock(const SymAddrSize &ml) override {return true;};
+  virtual NODISCARD bool mutex_lock_fail(const SymAddrSize &ml) override{return true;};
+  virtual NODISCARD bool mutex_trylock(const SymAddrSize &ml) override{return true;};
+  virtual NODISCARD bool mutex_unlock(const SymAddrSize &ml) override{return true;};
+  virtual NODISCARD bool mutex_init(const SymAddrSize &ml) override{return true;};
+  virtual NODISCARD bool mutex_destroy(const SymAddrSize &ml) override{return true;};
+  virtual NODISCARD bool cond_init(const SymAddrSize &ml) override{return true;};
+  virtual NODISCARD bool cond_signal(const SymAddrSize &ml) override{return true;};
+  virtual NODISCARD bool cond_broadcast(const SymAddrSize &ml) override{return true;};
   virtual NODISCARD bool cond_wait(const SymAddrSize &cond_ml,
-                         const SymAddrSize &mutex_ml) override;
+                         const SymAddrSize &mutex_ml) override{return true;};
   virtual NODISCARD bool cond_awake(const SymAddrSize &cond_ml,
-                          const SymAddrSize &mutex_ml) override;
-  virtual NODISCARD int cond_destroy(const SymAddrSize &ml) override;
-  virtual NODISCARD bool register_alternatives(int alt_count) override;
+                          const SymAddrSize &mutex_ml) override{return true;};
+  virtual NODISCARD int cond_destroy(const SymAddrSize &ml) override{return true;};
+  virtual NODISCARD bool register_alternatives(int alt_count) override{return true;};
   virtual long double estimate_trace_count() const override;
 
 
@@ -265,11 +265,11 @@ protected:
 
     //
 
-    IPid get_pid() const{
+    int get_pid() const{
       return pid;
     }
 
-    Tid get_tid() const{
+    int get_tid() const{
       return tid;
     }
 
@@ -332,7 +332,7 @@ protected:
      */
     bool may_conflict;
 
-    Option<int> read_from;
+    int read_from;
     
     
     /* Tid of Transaction */
@@ -342,7 +342,7 @@ protected:
     //std::vector<Transaction> replay_transactions_before;
     std::vector<int> can_read_from;
     std::map<int,bool> possible_reads; 
-    std::set<unsigned> happens_before;
+    std::set<int> happens_before;
     //std::vector<std::vector<Transaction>> schedules;
     //std::vector<std::vector<Event>> schedules_event;
 
@@ -478,22 +478,7 @@ protected:
 
   /* Checks whether an event is included in a vector clock. */
   bool happens_before(const Event &e, const VClock<IPid> &c) const;
-  /* Check whether a read-from might be satisfiable according to the
-   * vector clocks.
-   */
-  bool can_rf_by_vclocks(int r, int ow, int w) const;
-  /* Assuming that r and w are RMW, that r immediately preceeds w in
-   * coherence order, checks whether swapping r and w is possible
-   * according to the vector clocks.
-   */
-  bool can_swap_by_vclocks(int r, int w) const;
-  /* Assuming that f and s are MLock, that u is MUnlock, s rf u rf f,
-   * checks whether swapping f and s is possible according to the vector
-   * clocks.
-   */
-  bool can_swap_lock_by_vclocks(int f, int u, int s) const;
-  /* Records a symbolic representation of the current event.
-   */
+  
   bool NODISCARD record_symbolic(SymEv event);
   /* Estimate the total number of traces that have the same prefix as
    * the current one, up to the first idx events.
@@ -525,7 +510,7 @@ protected:
   unsigned find_process_transaction(IPid pid, int index) const;
   bool is_begin(unsigned idx) const;
   bool is_end(unsigned idx) const;
-  bool has_store_on_var(void *ptr, unsigned i) const;
+  bool has_store_on_var(const void *ptr, unsigned i) const;
   bool transaction_happens_before(const Transaction &t, const VClock<int> &clock) const;
   void add_transaction_happens_after(Tid second, Tid first);
   void add_transaction_happens_after_thread(Tid second, IPid thread);
@@ -534,6 +519,8 @@ protected:
   void record_replay(int eindex , int tindex);
   bool is_equivalent(std::vector<std::vector<STransaction>> &schedules , std::vector<STransaction> this_schedule);
   void add_to_queue();
+  void append_replay_events(std::vector<STransaction> &transactions_before , std::vector<Transaction> &new_transactions, 
+                                        std::vector<SEvent> &events_before, std::vector<Event> &new_prefix);
 };
 
 #endif

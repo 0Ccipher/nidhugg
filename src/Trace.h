@@ -30,6 +30,7 @@
 #include "CPid.h"
 #include "IID.h"
 #include  "VClock.h"
+#include "SymEv.h"
 
 #include <string>
 #include <vector>
@@ -204,14 +205,22 @@ class TIDSeqTrace{
       int tid;
       unsigned tindex;
 
-      VClock<int> clock;    
+      VClock<int> clock;
+      VClock<int> above_clock;
       std::vector<int> read_from;
       std::vector<unsigned> modification_order;
     };
-  
+    struct Sym {
+      Sym(int type): type(type) {};
+      int type; //type = 1 => begin_
+
+    };
   std::vector<Transaction> transactions;
   std::unordered_map<int , std::unordered_map<unsigned, bool>> del;
   int trns_idx = -1;
+
+  std::vector<Sym> computation_sym;
+
   friend class TIDSeqTraceBuilder;
   };
 /* This class represents traces that are expressed as sequences of
