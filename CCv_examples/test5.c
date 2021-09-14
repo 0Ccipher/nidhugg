@@ -18,7 +18,7 @@ void __VERIFIER_atomic_t2(){
     //printf(" z2:=%d " , z);
 	printf("y2:=%d ", y);
    	y = 2;
-   	printf("y2:=%d ", y);
+   	//assert( y != 6);
 }
 
 
@@ -39,7 +39,7 @@ void __VERIFIER_atomic_t5(){
 } 
 
 void __VERIFIER_atomic_t6(){
-	//printf("f6:=%d ", f);
+	printf("f6:=%d ", f);
 	y = 6;
 	printf("y6:=%d ", y);
 	//assert(f != 4);

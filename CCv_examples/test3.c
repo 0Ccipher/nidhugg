@@ -13,10 +13,10 @@ void __VERIFIER_atomic_t1(){
 }
 
 void __VERIFIER_atomic_t2(){
-	printf(" y2:=%d " , y);
-	printf(" x2:=%d " , x);
-	//printf(" x2:=%d " , x);
 	//printf(" y2:=%d " , y);
+	//printf(" x2:=%d " , x);
+	printf(" x2:=%d " , x);
+	printf(" y2:=%d " , y);
 	//assert( y!=6 || x!= 1 );
    	y = 2;
 }
