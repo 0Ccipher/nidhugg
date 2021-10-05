@@ -24,6 +24,7 @@
 #include "GlobalContext.h"
 #include "Transform.h"
 #include "Timing.h"
+#include <chrono>
 
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/ManagedStatic.h>
@@ -33,6 +34,7 @@
 #include <stdexcept>
 
 extern llvm::cl::opt<std::string> cl_transform;
+using namespace std::chrono;
 
 llvm::cl::opt<std::string>
 cl_input_file(llvm::cl::desc("<input bitcode or assembly>"),
@@ -118,8 +120,10 @@ int main(int argc, char *argv[]){
       DPORDriver *driver =
         DPORDriver::parseIRFile(cl_input_file,conf);
 
+          auto start = high_resolution_clock::now();///////////////
+
       DPORDriver::Result res = driver->run();
-      std::cout << "Trace count: " << res.trace_count << std::endl;
+      std::cout << "Trace count:= " << res.trace_count << std::endl;
       if (res.assume_blocked_trace_count > 0)
         std::cout << "Assume-blocked trace count: "
                   << res.assume_blocked_trace_count << std::endl;
@@ -132,6 +136,10 @@ int main(int argc, char *argv[]){
                   << res.error_trace->to_string(2);
       }else{
         std::cout << "No errors were detected." << std::endl;
+        auto stop = high_resolution_clock::now();
+        auto duration = duration_cast<microseconds>(stop - start);
+        std::cout << "Time taken : "
+         << duration.count() << " microseconds" << std::endl;
       }
 
       delete driver;

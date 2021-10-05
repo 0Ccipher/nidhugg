@@ -195,10 +195,12 @@ Trace *CCVTraceBuilder::get_trace() const{
     cmp_md.push_from(prefix[i].md);
     if(prefix[i].sym.kind == SymEv::BEGIN)
       cmp_trns.push_sym(1);
+    else if(prefix[i].sym.kind == SymEv::END)
+      cmp_trns.push_sym(2);
     else{
       cmp_trns.push_sym(0);
     }
-  };
+  }
   for(unsigned i=0 ; i < transactions.size(); ++i) {
     cmp_trns.push_from(transactions[i].get_pid() , transactions[i].get_tid() , transactions[i].get_index(),
                                   transactions[i].above_clock , transactions[i].clock , transactions[i].read_from, transactions[i].modification_order);
@@ -1153,9 +1155,6 @@ int CCVTraceBuilder::performRead(void *ptr , int typ) {
       //curev().read_from = read_from;
     }
     if(curev().localread != true && read_from!= -1 && !curev().current) {
-      //rf edge
-      transactions[transaction_idx].clock += transactions[read_from].clock;
-      transactions[transaction_idx].above_clock += transactions[read_from].above_clock;
       //Add co edge to transaction[reads_from] form transactions \in [po U rf] this transaction
       std::set<int> &happens_before = curev().happens_before;
       std::vector<int> writes;
@@ -1170,6 +1169,22 @@ int CCVTraceBuilder::performRead(void *ptr , int typ) {
           }
         }
       }
+
+      std::set<int> latest_hb_writes;
+      for(auto j : happens_before){
+        int readable = true;
+        for( auto k : happens_before){
+          if(j!= k && transaction_happens_before(transactions[j] , transactions[k].clock)){
+            readable = false;
+          }
+        }
+        if(readable){
+          latest_hb_writes.insert(j);
+        }
+      }
+
+      transactions[transaction_idx].hb_writes[ptr] = latest_hb_writes;////
+
       std::vector<std::pair<const void *, int>> &cur_reads = transactions[transaction_idx].vec_current_reads;
       for(auto j: writes){
         bool readable = true;;
@@ -1182,14 +1197,42 @@ int CCVTraceBuilder::performRead(void *ptr , int typ) {
         //Make sure that this new transaction does not overwrite earlier write source violating the semantics
         if(readable){
         for(auto tr : cur_reads){
-          if((tr.second == -1 && tr.first != ptr && transactions[j].global_variables.count(tr.first))) {
+          if( tr.first == ptr){
+            break;
+          }
+          if((tr.second == -1 && transactions[j].global_variables.count(tr.first))) {
             readable = false;
             break;
           }
-          else if(tr.first != ptr && transactions[j].global_variables.count(tr.first) && tr.second != j && transactions[tr.second].global_variables.count(ptr) ){
+          else if(transactions[j].global_variables.count(tr.first) && tr.second != j && transactions[tr.second].global_variables.count(ptr) ){
             readable = false;
             break;
           }
+            //If previous read hb this new write source..violates 
+          if(tr.second != -1 && transactions[j].global_variables.count(tr.first) && tr.second != j 
+                            && transaction_happens_before(transactions[tr.second] , transactions[j].clock)){
+            readable = false;
+            break;
+          }
+          //all trnsactions happenn-before this new transaction does not overwrite earlier writes
+          if(readable){
+          for( int k=0; k < transaction_idx ; k++){
+            if(tr.second == -1 && transaction_happens_before(transactions[k] , transactions[j].clock) 
+                        && transactions[k].global_variables.count(tr.first)){
+              readable = false;
+              break;
+            }
+            if(tr.second != -1 && transaction_happens_before(transactions[k] , transactions[j].clock) 
+                        && transactions[k].global_variables.count(tr.first) && k != tr.second
+                        && transaction_happens_before(transactions[tr.second] , transactions[k].clock)){
+              readable = false;
+              break;
+            }
+          }
+          if(!readable){
+            break;
+          }
+        }
         }}
 
         if(readable){
@@ -1197,6 +1240,11 @@ int CCVTraceBuilder::performRead(void *ptr , int typ) {
           //curev().possible_reads.insert({j,false});
         } 
       }
+
+      //rf edge
+      transactions[transaction_idx].clock += transactions[read_from].clock;
+      transactions[transaction_idx].above_clock += transactions[read_from].above_clock;
+      //co edges
       for(auto tr : readable_vec){
         if(happens_before.count(tr)){
           visible_vec.emplace_back(tr);
@@ -1276,10 +1324,22 @@ int CCVTraceBuilder::performRead(void *ptr , int typ) {
   std::vector<std::pair<const void *, int>> &cur_reads = cur_transaction.vec_current_reads; // Current reads from
 
   // Check if, it can read from init and .
-  if(happens_before.empty()){
+  if(happens_before.empty() && curev().iid.get_pid() !=0 /*not main*/){
     curev().can_read_from.emplace_back(-1);
   }
-
+  std::set<int> latest_hb_writes;
+  for(auto j : happens_before){
+    int readable = true;
+    for( auto k : happens_before){
+      if(j!= k && transaction_happens_before(transactions[j] , transactions[k].clock)){
+        readable = false;
+      }
+    }
+    if(readable){
+      latest_hb_writes.insert(j);
+    }
+  }
+  transactions[transaction_idx].hb_writes[ptr] = latest_hb_writes;////
     for(auto j: writes){
       bool readable = true;;
       for(auto k: happens_before){
@@ -1291,13 +1351,48 @@ int CCVTraceBuilder::performRead(void *ptr , int typ) {
       //Make sure that this new transaction does not overwrite earlier write source violating the semantics
       if(readable){
       for(auto tr : cur_reads){
-        if((tr.second == -1 && tr.first != ptr && transactions[j].global_variables.count(tr.first))) {
+        if((tr.second == -1 && transactions[j].global_variables.count(tr.first))) {
           readable = false;
           break;
         }
-        else if(tr.first != ptr && transactions[j].global_variables.count(tr.first) && tr.second != j && transactions[tr.second].global_variables.count(ptr) ){
+        else if(transactions[j].global_variables.count(tr.first) && tr.second != j && transactions[tr.second].global_variables.count(ptr) ){
           readable = false;
           break;
+        }
+        //If previous read hb this new write source..violates 
+        if(tr.second != -1 && transactions[j].global_variables.count(tr.first) && tr.second != j 
+                          && transaction_happens_before(transactions[tr.second] , transactions[j].clock)){
+          readable = false;
+          break;
+        }
+        //Ensure that this new write source will not override earlier read because of new co edge to be added
+        if(readable){
+          for(auto tr1: latest_hb_writes){
+            if(transactions[j].global_variables.count(tr.first) && transactions[tr1].global_variables.count(ptr) && tr1!= j
+                        && transaction_happens_before(transactions[tr.second] , transactions[tr1].clock)){
+              readable = false;
+              break;
+            }
+          }
+        }
+        if(readable){
+          for( int k=0; k < transaction_idx ; k++){
+            if(tr.second == -1 && transaction_happens_before(transactions[k] , transactions[j].clock) 
+                        && transactions[k].global_variables.count(tr.first)){
+              readable = false;
+              break;
+            }
+            //check if previous read is overwritten by some tr hb this new write source
+            if(tr.second != -1 && transaction_happens_before(transactions[k] , transactions[j].clock) 
+                        && transactions[k].global_variables.count(tr.first) && k != tr.second
+                        && transaction_happens_before(transactions[tr.second] , transactions[k].clock)){
+              readable = false;
+              break;
+            }
+          }
+          if(!readable){
+            break;
+          }
         }
       }}
 
@@ -1319,8 +1414,7 @@ int CCVTraceBuilder::performRead(void *ptr , int typ) {
     }
     int reads_from = curev().can_read_from.back();
     curev().can_read_from.pop_back();
-    //if( reads_from != -1)
-      //curev().possible_reads[reads_from] = true; 
+    
     //Add rf edge
     if(reads_from != -1) {
       transactions[transaction_idx].clock += transactions[reads_from].clock; // make rf visible in vector clock
@@ -1331,15 +1425,25 @@ int CCVTraceBuilder::performRead(void *ptr , int typ) {
     if(!cur_transaction.current_reads.count(ptr)) {
       cur_transaction.current_reads[ptr] = reads_from;
       cur_transaction.vec_current_reads.emplace_back(std::make_pair(ptr,reads_from));
-    }
+    }for(auto j : happens_before){
+                    int readable = true;
+                    for( auto k : happens_before){
+                      if(j!= k && transaction_happens_before(transactions[j] , transactions[k].clock)){
+                        readable = false;
+                      }
+                    }
+                    if(readable){
+                      latest_hb_writes.insert(j);
+                    }
+                  }
     //Add co edge to transaction[reads_from] form t \in [po U rf] 
-    if( reads_from != 1) //Ensures that it is not init
+    if( reads_from != -1){//Ensures that it is not init
     for(auto tr : visible_vec){
       if(tr != reads_from){
           transactions[reads_from].modification_order.emplace_back(tr);
           transactions[reads_from].clock += transactions[tr].clock; // make co edge visible in vector clock
       }
-    }
+    }}
 
     curev().read_from = reads_from;
     tasks_created = tasks_created + curev().can_read_from.size();
@@ -1409,10 +1513,45 @@ void CCVTraceBuilder::createSchedule(int tid){
                   possible = false;
                   break;
                 }
+                if(trw1.second != -1 && transactions[trw1.second].global_variables.count(ptr.first) && t.global_variables.count(trw1.first)){
+                  possible = false;
+                  break;
+                }
                 if(trw1.second == -1 && t.global_variables.count(trw1.first)){
                   possible = false;
                   break;
                 } 
+                {
+                  std::set<int> happens_before;
+                  for (int j = 0; j < i ; ++j) {
+                    if (has_store_on_var(ptr.first,j)){
+                      if(transaction_happens_before(transactions[j],transactions[i].above_clock)) {
+                        happens_before.insert(j);
+                      }
+                    }
+                  }
+                  std::set<int> &latest_hb_writes = transactions[i].hb_writes[ptr.first];
+                  /*for(auto j : happens_before){
+                    int readable = true;
+                    for( auto k : happens_before){
+                      if(j!= k && transaction_happens_before(transactions[j] , transactions[k].clock)){
+                        readable = false;
+                      }
+                    }
+                    if(readable){
+                      latest_hb_writes.insert(j);
+                    }
+                  }*/
+                  if(possible){
+                    for(auto tr1: latest_hb_writes){
+                      if(t.global_variables.count(trw1.first) && transactions[tr1].global_variables.count(ptr.first)
+                                  && transaction_happens_before(transactions[trw1.second] , transactions[tr1].clock)){
+                        possible = false;
+                        break;
+                      }
+                    }
+                  }
+                }
                 //* Check for trw1 [rf] trns[i]  AND trw1 [po U rf] trw2. AND trw2 [po U rf] t
                 //Special case for trw1 = -1. 
                 if( trw1.second == -1) {
@@ -1576,6 +1715,6 @@ uint64_t CCVTraceBuilder::tracecount(){
 			t = i;
 	}
 	t = temp;
-  //t = prefix.size();
+  //t = tp;
 	return t;
 }

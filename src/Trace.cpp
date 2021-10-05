@@ -133,6 +133,13 @@ std::string IIDSeqTrace::to_string(int _ind) {
               else
                 ss << " " << trnsTrace.transactions[reads[j]].tid << " ,";
               if(reads[j]!= -1 && !trnsTrace.del[tpid].count(trnsTrace.transactions[reads[j]].tid)){
+                for(int i= 0 ; i < transaction_idx ; i++){
+                  IID<int> tiid(trnsTrace.transactions[i].pid,trnsTrace.transactions[i].tindex);
+                  if(i != reads[j] && trnsTrace.transactions[reads[j]].above_clock.includes(tiid) && !trnsTrace.del[tpid].count(trnsTrace.transactions[i].tid)) {
+                    trnsTrace.del[tpid].insert({trnsTrace.transactions[i].tid, false});
+                    delivery.push_back(trnsTrace.transactions[i].tid);
+                  }
+                }
                 trnsTrace.del[tpid].insert({trnsTrace.transactions[reads[j]].tid, false});
                 delivery.push_back(trnsTrace.transactions[reads[j]].tid);
               }
@@ -144,13 +151,20 @@ std::string IIDSeqTrace::to_string(int _ind) {
                 ss << " " << trnsTrace.transactions[reads[j]].tid;
             ss << " ]";
             if(reads[j] != -1 && !trnsTrace.del[tpid].count(trnsTrace.transactions[reads[j]].tid)){
-                trnsTrace.del[tpid].insert({trnsTrace.transactions[reads[j]].tid, false});
-                delivery.push_back(trnsTrace.transactions[reads[j]].tid);
+              for(int i= 0 ; i < transaction_idx ; i++){
+                IID<int> tiid(trnsTrace.transactions[i].pid,trnsTrace.transactions[i].tindex);
+                if(i != reads[j] && trnsTrace.transactions[reads[j]].above_clock.includes(tiid) && !trnsTrace.del[tpid].count(trnsTrace.transactions[i].tid)) {
+                  trnsTrace.del[tpid].insert({trnsTrace.transactions[i].tid, false});
+                  delivery.push_back(trnsTrace.transactions[i].tid);
+                }
+              }
+              trnsTrace.del[tpid].insert({trnsTrace.transactions[reads[j]].tid, false});
+              delivery.push_back(trnsTrace.transactions[reads[j]].tid);
             }
             s += iid_str;
             s += ss.str();
             s += "\n";
-
+            
             if(!delivery.empty()){
               for(auto del : delivery){
                 std::stringstream ss;
@@ -186,18 +200,28 @@ std::string IIDSeqTrace::to_string(int _ind) {
           s += iid_str;
           s += ss.str();
         }
+
+      else if (trnsTrace.computation_sym[i].type == 2){
+        std::stringstream ss;
+        ss << ": " << "End_Transaction (" << trnsTrace.transactions[transaction_idx].pid << " , ";
+        ss << trnsTrace.transactions[transaction_idx].tid << ") ";
+        s += iid_str;
+        s += ss.str();
+      }
       else if(auto md = computation_md[i]){
         std::stringstream ss;
         ss << " " << TraceUtil::basename(md.file) << ":" << md.line;
         strns = TraceUtil::get_src_line_verbatim(md);
-        if(strns.find("}") == 0 && transaction_idx >= 0) {
-          ss << ": " << "End_Transaction (" << trnsTrace.transactions[transaction_idx].pid << " , ";
-          ss << trnsTrace.transactions[transaction_idx].tid << ") ";
+        if((strns.find("return")== 0 || strns.find("}") == 0)){
+          //ss << ": " << TraceUtil::get_src_line_verbatim(md);
+          s += iid_str;
+          s += ss.str();
         }
-        else  
+        else{
           ss << ": " << TraceUtil::get_src_line_verbatim(md);
-        s += iid_str;
-        s += ss.str();
+          s += iid_str;
+          s += ss.str();
+        }
       }
       s += "\n";
     }

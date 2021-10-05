@@ -261,6 +261,7 @@ protected:
     std::unordered_map<const void *, llvm::GenericValue> global_variables;
     std::unordered_map<const void *, int> current_reads;
     std::vector<std::pair<const void *, int>> vec_current_reads;
+    std::map<const void * , std::set<int>> hb_writes;
     //std::vector<std::pair<SymEv, Tid>> current_reads_vector; //SymEv
 
     //
@@ -498,7 +499,7 @@ protected:
 
   int tasks_created = 0;
   int temp = 1;
-  
+  int tp = 100;
   std::vector<Event> replay_prefix;
   std::vector<Transaction> replay_transactions;
 
