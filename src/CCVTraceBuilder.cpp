@@ -534,7 +534,7 @@ bool CCVTraceBuilder::store(const SymData &sd){
 bool CCVTraceBuilder::atomic_store(const SymData &sd){
   if (!record_symbolic(SymEv::Store(sd))) return false;
   if(!transactions.empty() && curev().iid.get_pid() == transactions.back().pid) 
-  	curev().tid = transactions[transaction_idx].tid;
+    curev().tid = transactions[transaction_idx].tid;
   do_atomic_store(sd);
   return true;
 }
@@ -562,7 +562,7 @@ bool CCVTraceBuilder::atomic_rmw(const SymData &sd){
 bool CCVTraceBuilder::load(const SymAddrSize &ml){
   if (!record_symbolic(SymEv::Load(ml))) return false;
   if(!transactions.empty() && curev().iid.get_pid() == transactions.back().pid) 
-  	curev().tid = transactions[transaction_idx].tid;
+    curev().tid = transactions[transaction_idx].tid;
   do_load(ml);
   return true;
 }
@@ -988,7 +988,7 @@ void CCVTraceBuilder::createNextEvent(){
 
   auto p = curev().iid.get_pid();
   seen_effect = false;
- 	++prefix_idx;
+  ++prefix_idx;
   assert(prefix_idx == int(prefix.size()));
   threads[p].event_indices.push_back(prefix_idx);
   prefix.emplace_back(IID<IPid>(IPid(p),threads[p].last_event_index()));
@@ -1020,16 +1020,16 @@ void CCVTraceBuilder::beginTransaction(int tid) {
   }
   else{
     assert(tid > 0);
-  	IPid pid = curev().iid.get_pid();
+    IPid pid = curev().iid.get_pid();
     bool r = record_symbolic(SymEv::Begin(tid));
-  	++transaction_idx;
+    ++transaction_idx;
     assert(transaction_idx == int(transactions.size()));
     threads[pid].transaction_indices.emplace_back(transaction_idx);
     unsigned tidx = threads[pid].last_transaction_index();
     Transaction t(pid,tid,tidx);
     transactions.emplace_back(t);
     if(!transactions.empty() && curev().iid.get_pid() == transactions.back().pid) 
-    	curev().tid = transactions.back().tid;
+      curev().tid = transactions.back().tid;
     curev().may_conflict = true;
 
     compute_above_clock(transaction_idx);
@@ -1050,7 +1050,7 @@ void CCVTraceBuilder::endTransaction(int tid) {
   }
   assert(tid > 0);
   if(!transactions.empty() && curev().iid.get_pid() == transactions.back().pid){
-  	curev().tid = tid;
+    curev().tid = tid;
     bool r = record_symbolic(SymEv::End(tid));
     curev().may_conflict = true;
 
@@ -1067,19 +1067,19 @@ int CCVTraceBuilder:: performWrite(void *ptr, llvm::GenericValue val , int typ){
     curev().tid = transactions[transaction_idx].tid;
   curev().may_conflict = true;
 
-	IPid pid = curev().iid.get_pid();
-	Transaction &t = transactions[transaction_idx];
-	if(!transactions.empty() && curev().iid.get_pid() == t.pid){
-		if(t.global_variables.count(ptr)){
-			t.global_variables[ptr] = val;
-		}
-		else{
-			t.global_variables.insert({ptr,val});
-		}
-		return transaction_idx;
-	}
-	else
-		return -1;
+  IPid pid = curev().iid.get_pid();
+  Transaction &t = transactions[transaction_idx];
+  if(!transactions.empty() && curev().iid.get_pid() == t.pid){
+    if(t.global_variables.count(ptr)){
+      t.global_variables[ptr] = val;
+    }
+    else{
+      t.global_variables.insert({ptr,val});
+    }
+    return transaction_idx;
+  }
+  else
+    return -1;
 }
 
 void CCVTraceBuilder::record_replay(int eindex , int tindex){
@@ -1256,6 +1256,12 @@ int CCVTraceBuilder::performRead(void *ptr , int typ) {
             transactions[read_from].clock += transactions[j].clock; // co edge
           }
       }
+      for(auto tr:cur_reads){
+        if( transactions[read_from].global_variables.count(tr.first) && tr.second != read_from){
+          transactions[tr.second].modification_order.emplace_back(read_from);
+          transactions[tr.second].clock += transactions[read_from].clock;
+        }
+      }
     }
     curev().var = ptr;
     return read_from;
@@ -1263,7 +1269,7 @@ int CCVTraceBuilder::performRead(void *ptr , int typ) {
 
   // Not Replay
 
-	int tid = curev().tid;
+  int tid = curev().tid;
   Transaction &cur_transaction = transactions[transaction_idx];
   //Local read
   if(!transactions.empty() && curev().iid.get_pid() == cur_transaction.pid){
@@ -1425,25 +1431,22 @@ int CCVTraceBuilder::performRead(void *ptr , int typ) {
     if(!cur_transaction.current_reads.count(ptr)) {
       cur_transaction.current_reads[ptr] = reads_from;
       cur_transaction.vec_current_reads.emplace_back(std::make_pair(ptr,reads_from));
-    }for(auto j : happens_before){
-                    int readable = true;
-                    for( auto k : happens_before){
-                      if(j!= k && transaction_happens_before(transactions[j] , transactions[k].clock)){
-                        readable = false;
-                      }
-                    }
-                    if(readable){
-                      latest_hb_writes.insert(j);
-                    }
-                  }
+    }
     //Add co edge to transaction[reads_from] form t \in [po U rf] 
     if( reads_from != -1){//Ensures that it is not init
-    for(auto tr : visible_vec){
-      if(tr != reads_from){
-          transactions[reads_from].modification_order.emplace_back(tr);
-          transactions[reads_from].clock += transactions[tr].clock; // make co edge visible in vector clock
+      for(auto tr : visible_vec){
+        if(tr != reads_from){
+            transactions[reads_from].modification_order.emplace_back(tr);
+            transactions[reads_from].clock += transactions[tr].clock; // make co edge visible in vector clock
+        }
       }
-    }}
+      for(auto tr:cur_reads){
+        if( transactions[reads_from].global_variables.count(tr.first) && tr.second != reads_from){
+          transactions[tr.second].modification_order.emplace_back(reads_from);
+          transactions[tr.second].clock += transactions[reads_from].clock;
+        }
+      }
+    }
 
     curev().read_from = reads_from;
     tasks_created = tasks_created + curev().can_read_from.size();
@@ -1708,13 +1711,13 @@ bool CCVTraceBuilder::is_equivalent(std::vector<std::vector<STransaction>> &sche
 }
 
 uint64_t CCVTraceBuilder::tracecount(){
-	uint64_t t = 0;
-	int64_t value = 0;
-	for(unsigned i=0 ; i < prefix.size() ; ++i){
-		if(prefix[i].sym.kind == SymEv::SPAWN)
-			t = i;
-	}
-	t = temp;
+  uint64_t t = 0;
+  int64_t value = 0;
+  for(unsigned i=0 ; i < prefix.size() ; ++i){
+    if(prefix[i].sym.kind == SymEv::SPAWN)
+      t = i;
+  }
+  t = temp;
   //t = tp;
-	return t;
+  return t;
 }
