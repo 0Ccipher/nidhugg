@@ -1,0 +1,11 @@
+Benchmarks
+
+
+** Litmus tests (20-30 ) if 100s great; 
+  -- Kind of examples: SB, ..., LB, ...
+  -- Size of examples: number of threads, transactions per thread,
+
+
+** Story tests (5-6)
+  -- from some source (earlier paper; some practical tool)
+  -- New programs.. 
