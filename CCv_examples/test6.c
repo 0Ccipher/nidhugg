@@ -82,7 +82,7 @@ void *thr3(void *arg){
 void *thr4(void *arg){
 	printf(" ");
 	__VERIFIER_atomic_t7();
-	__VERIFIER_atomic_t8();
+	//__VERIFIER_atomic_t8();
 	return NULL;
 
 }
@@ -94,23 +94,23 @@ void *thr5(void *arg){
 
 }
 int main(int argc, char *argv[]){
-	pthread_t t1,t2,t3,t4[2];
+	pthread_t t1,t2,t3,t4[4];
 	pthread_create(&t1,NULL,thr1,NULL);
 	pthread_create(&t2,NULL,thr2,NULL);
 	pthread_create(&t3,NULL,thr3,NULL);
-	pthread_create(&t4[0],NULL,thr4,NULL);
-	pthread_create(&t4[1],NULL,thr5,NULL);
-	/*for(int i=0 ; i < 2;i++){
+	//pthread_create(&t4[0],NULL,thr4,NULL);
+	//pthread_create(&t4[1],NULL,thr5,NULL);
+	for(int i=0 ; i < 4;i++){
 		pthread_create(&t4[i], NULL, thr4, NULL);
-	}*/
+	}
 	pthread_join(t1,NULL);
 	pthread_join(t2,NULL);
 	pthread_join(t3,NULL);
-	pthread_join(t4[0],NULL);
-	pthread_join(t4[1],NULL);
-	/*for(int i=0 ; i < 2; i++){
+	//pthread_join(t4[0],NULL);
+	//pthread_join(t4[1],NULL);
+	for(int i=0 ; i < 4; i++){
 		pthread_join(t4[i],NULL);
-	}*/
+	}
 	
 	printf("\n");
 	return 0;
