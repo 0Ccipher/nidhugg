@@ -44,6 +44,8 @@ public:
     POWER,
     PSO,
     CCV,
+    CC,
+    CM,
     TSO //TODO
   };
   enum DPORAlgorithm{

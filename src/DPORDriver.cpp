@@ -30,6 +30,8 @@
 #include "Cpubind.h"
 #include "CCVTraceBuilder.h"
 #include "CCVInterpreter.h"
+#include "CCTraceBuilder.h"
+#include "CCInterpreter.h"
 
 #include <fstream>
 #include <stdexcept>
@@ -146,6 +148,9 @@ create_execution_engine(TraceBuilder &TB, llvm::Module *mod,
     EE = TSOInterpreter::create(mod,static_cast<TSOTraceBuilder&>(TB),conf,&ErrorMsg);
     break;
   case Configuration::CCV:
+    EE = llvm::Interpreter::create(mod,static_cast<TSOPSOTraceBuilder&>(TB),conf,&ErrorMsg);
+    break;
+  case Configuration::CC:
     EE = llvm::Interpreter::create(mod,static_cast<TSOPSOTraceBuilder&>(TB),conf,&ErrorMsg);
     break;
   case Configuration::MM_UNDEF:
@@ -437,6 +442,44 @@ DPORDriver::Result DPORDriver::run_ccv() {
   return res;
 }
 
+DPORDriver::Result DPORDriver::run_cc() {
+  Result res;
+  std::unique_ptr<llvm::Module> mod = parse(PARSE_AND_CHECK);
+  CCTraceBuilder TB(conf);
+
+  uint64_t computation_count = 0;
+  long double estimate = 1;
+  int tasks_left = 1;
+
+  do{
+    if(conf.print_progress){
+      print_progress(computation_count, estimate, res);
+    }
+
+    TB.reset();
+    bool assume_blocked = false;
+    Trace *t= this->run_once(TB, mod.get(), assume_blocked);
+
+    tasks_left--;
+    tasks_left += TB.total_tasks();
+    //TB.reset();
+    
+    
+   if(handle_trace(&TB, t, &computation_count, res, assume_blocked)) {
+      break;
+    }
+    
+    if((computation_count+1) % 1000 == 0){
+      /* llvm::ExecutionEngine leaks global variables until the Module is
+       * destructed */
+      mod = parse();
+    }
+    
+  } while(tasks_left);
+  res.trace_count = TB.tracecount();
+
+  return res;
+}
 DPORDriver::Result DPORDriver::run(){
   Result res;
   std::unique_ptr<llvm::Module> mod = parse(PARSE_AND_CHECK);
@@ -462,6 +505,10 @@ DPORDriver::Result DPORDriver::run(){
   case Configuration::CCV:
     	res = run_ccv();
     	return res;
+    break;
+  case Configuration::CC:
+      res = run_cc();
+      return res;
     break;
   case Configuration::MM_UNDEF:
     throw std::logic_error("DPORDriver: No memory model is specified.");

@@ -73,6 +73,7 @@ public:
     return iid.get_index() <= (*this)[iid.get_pid()];
   };
 
+  
   /* *** Partial order comparisons ***
    *
    * A vector clock u is considered strictly less than a vector clock
@@ -157,7 +158,13 @@ public:
   bool includes(const IID<int> &iid) const {
     return iid.get_index() <= (*this)[iid.get_pid()];
   };
-
+  
+   VClock &expand(int size) {
+     if(vec.size() < size){
+       vec.resize(size);
+     }
+     return *this;
+  }
   /* *** Partial order comparisons ***
    *
    * A vector clock u is considered strictly less than a vector clock

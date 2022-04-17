@@ -78,7 +78,9 @@ cl_memory_model(llvm::cl::NotHidden, llvm::cl::init(Configuration::MM_UNDEF),
                                  clEnumValN(Configuration::POWER,"power","The POWER model"),
                                  clEnumValN(Configuration::PSO,"pso","Partial Store Order"),
                                  clEnumValN(Configuration::TSO,"tso","Total Store Order"),
-                                 clEnumValN(Configuration::CCV,"ccv","Causal Covergence")
+                                 clEnumValN(Configuration::CCV,"ccv","Causal Covergence"),
+                                 clEnumValN(Configuration::CC,"cc","Weak Causal Consistency"),
+                                 clEnumValN(Configuration::CM,"cm","Causal Memory")
 #ifdef LLVM_CL_VALUES_USES_SENTINEL
                                 ,clEnumValEnd
 #endif
@@ -175,7 +177,7 @@ const std::set<std::string> &Configuration::commandline_opts(){
     "max-search-depth",
     "n-threads",
     "no-cpubind","no-cpubind-singlify",
-    "sc","tso","pso","power","arm","ccv", //TODO
+    "sc","tso","pso","power","arm","ccv","cm","cc", //TODO
     "smtlib",
     "source","optimal","observers","rf",
     "check-robustness",
@@ -279,7 +281,9 @@ void Configuration::check_commandline(){
     if(cl_memory_model == Configuration::PSO) mm = "PSO";
     if(cl_memory_model == Configuration::POWER) mm = "POWER";
     if(cl_memory_model == Configuration::ARM) mm = "ARM";
-    if(cl_memory_model == Configuration::CCV) mm = "CCV";//TODO
+    if(cl_memory_model == Configuration::CCV) mm = "CCV";
+    if(cl_memory_model == Configuration::CC) mm = "CC";
+    if(cl_memory_model == Configuration::CM) mm = "CM";//TODO
     if(cl_memory_model == Configuration::ARM || cl_memory_model == Configuration::POWER){
       if(cl_extfun_no_race.getNumOccurrences()){
         Debug::warn("Configuration::check_commandline:mm:extfun-no-race")

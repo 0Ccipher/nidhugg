@@ -40,14 +40,17 @@ libnidhugg_a_SOURCES = \
   Transform.cpp Transform.h \
   TSOInterpreter.cpp TSOInterpreter.h \
   CCVInterpreter.cpp CCVInterpreter.h \
+  CCInterpreter.cpp CCInterpreter.h \
   TSOPSOTraceBuilder.h \
   TSOTraceBuilder.cpp TSOTraceBuilder.h \
   RFSCUnfoldingTree.cpp RFSCUnfoldingTree.h \
   RFSCDecisionTree.cpp RFSCDecisionTree.h \
   RFSCTraceBuilder.cpp RFSCTraceBuilder.h \
   CCVTraceBuilder.cpp CCVTraceBuilder.h \
+  CCTraceBuilder.cpp CCTraceBuilder.h \
   VClock.cpp VClock.h VClock.tcc \
   PrefixHeuristic.cpp PrefixHeuristic.h\
+  CCVSchedules \
   CCVSchedules \
   vecset.h vecset.tcc
 libnidhugg_a_CXXFLAGS = -fno-rtti
