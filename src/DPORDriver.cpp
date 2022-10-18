@@ -39,6 +39,8 @@
 #include <cfloat>
 #include <thread>
 #include <queue>
+#include <condition_variable>
+
 
 #if defined(HAVE_LLVM_IR_LLVMCONTEXT_H)
 #include <llvm/IR/LLVMContext.h>

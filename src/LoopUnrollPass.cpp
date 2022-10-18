@@ -23,6 +23,7 @@
 #include "vecset.h"
 
 #include <sstream>
+#include <map>
 
 #if defined(HAVE_LLVM_IR_CONSTANTS_H)
 #include <llvm/IR/Constants.h>

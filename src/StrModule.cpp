@@ -121,7 +121,7 @@ namespace StrModule {
     llvm::raw_ostream *os = new llvm::raw_fd_ostream(outfile.c_str(),errs,
                                                      llvm::sys::fs::F_None);
 #else
-    llvm::raw_ostream *os = new llvm::raw_fd_ostream(outfile.c_str(),errs,0);
+    llvm::raw_ostream *os = new llvm::raw_fd_ostream(outfile.c_str(),errs);
 #endif
 #ifdef LLVM_RAW_FD_OSTREAM_ERR_STR
     if(errs.size()){
@@ -137,7 +137,7 @@ namespace StrModule {
 #ifdef LLVM_CREATE_PRINT_MODULE_PASS_PTR_ARG
     PM.add(llvm::createPrintModulePass(os,true));
 #else
-    PM.add(llvm::createPrintModulePass(*os));
+    PM.add((llvm::Pass*)llvm::createPrintModulePass(*os));
 #endif
     PM.run(*mod);
   }
@@ -153,7 +153,7 @@ namespace StrModule {
 #ifdef LLVM_CREATE_PRINT_MODULE_PASS_PTR_ARG
     PM.add(llvm::createPrintModulePass(os,true));
 #else
-    PM.add(llvm::createPrintModulePass(*os));
+    PM.add((llvm::Pass*)llvm::createPrintModulePass(*os));
 #endif
     PM.run(*mod);
 #ifndef LLVM_CREATE_PRINT_MODULE_PASS_PTR_ARG
